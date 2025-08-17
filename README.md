@@ -27,6 +27,7 @@ It can be adapted for personal use (organizing family albums), professional work
 
 ## 📂 Project Structure
 
+```
 SmartPhotoSorter/
 │── data/
 │ ├── training/ # Pre-sorted training images
@@ -39,7 +40,7 @@ SmartPhotoSorter/
 │── src/ # Source code
 │── models/ # Trained models
 │── README.md
-
+```
 
 ## 🔧 Installation
 
