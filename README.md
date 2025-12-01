@@ -29,17 +29,78 @@ It can be adapted for personal use (organizing family albums), professional work
 
 ```
 SmartPhotoSorter/
-│── data/
-│ ├── training/ # Pre-sorted training images
-│ │ ├── cats/
-│ │ ├── dogs/
-│ │ ├── holidays/
-│ │ └── ...
-│ └── unsorted/ # Folder with unsorted images
+├── backend/
+    ├── app/
+    │   ├── main.py
+    │   ├── config.py
+    │   ├── db/
+    │   │   ├── mongodb.py
+    │   │   └── collections.py
+    │   ├── auth/
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   ├── schemas.py
+    │   │   ├── service.py
+    │   │   ├── hashing.py
+    │   │   └── jwt_handler.py
+    │   ├── users/
+    │   │   ├── __init__.py
+    │   │   ├── repository.py
+    │   │   └── schemas.py
+    │   ├── photos/
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   ├── service.py
+    │   │   ├── schemas.py
+    │   │   └── file_manager.py
+    │   ├── ml/
+    │   │   ├── __init__.py
+    │   │   ├── face_recognition.py
+    │   │   ├── extract_metadata.py
+    │   │   └── person_indexer.py
+    │   ├── storage/
+    │   │   └── user_uploads/
+    │   ├── utils/
+    │   │   ├── __init__.py
+    │   │   ├── file_utils.py
+    │   │   ├── security.py
+    │   │   └── photo_filters.py
+    │   └── routes/
+    │       ├── __init__.py
+    │       └── index.py
+    ├── requirements.txt
+    ├── Dockerfile
+    └── .env
+├── frontend_flutter/
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── api/
+│   │   │   ├── auth_api.dart
+│   │   │   ├── photo_api.dart
+│   │   │
+│   │   ├── screens/
+│   │   │   ├── login_screen.dart
+│   │   │   ├── register_screen.dart
+│   │   │   ├── person_gallery_screen.dart
+│   │   │   ├── photo_view_screen.dart
+│   │   │   ├── loading_screen.dart
+│   │   │
+│   │   ├── widgets/
+│   │   │   ├── photo_tile.dart
+│   │   │   ├── person_tile.dart
+│   │
+│   ├── assets/
+│   │   ├── icons/
+│   │   ├── mock_photos/
+│   │
+│   ├── pubspec.yaml
 │
-│── src/ # Source code
-│── models/ # Trained models
-│── README.md
+├── docker-compose.yml
+├── README.md
+└── docs/
+    ├── api_endpoints.md
+    ├── database_structure.md
+    ├── flow_user_upload.md
 ```
 
 ## 🔧 Installation
