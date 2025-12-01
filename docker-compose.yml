@@ -1,0 +1,28 @@
+services:
+  mongo:
+    image: mongo:6
+    container_name: mongo-db
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example123
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build: ./backend
+    container_name: backend-app
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      MONGO_URL: mongodb://root:example123@mongo:27017/
+      JWT_SECRET: "supersecret"
+    depends_on:
+      - mongo
+    volumes:
+      - ./backend/app/storage:/app/app/storage
+
+volumes:
+  mongo_data:
