@@ -1,9 +1,9 @@
 services:
   mongo:
     image: mongo:6
-    container_name: mongo-db
+    container_name: smartphotosorter-mongo
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example123
@@ -17,7 +17,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MONGO_URL: mongodb://root:example123@mongo:27017/
+      MONGO_URL: mongodb://root:example123@mongo:27017/?authSource=admin
       JWT_SECRET: "supersecret"
     depends_on:
       - mongo

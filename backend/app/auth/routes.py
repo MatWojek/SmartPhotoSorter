@@ -1,8 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
-from app.db.mongodb import users_collection
-from app.utils import security
-import uuid
+from app.auth.service import AuthService
 
 router = APIRouter()
 
@@ -15,29 +13,26 @@ class LoginUser(BaseModel):
     password: str
 
 @router.post("/register")
-def register(data: RegisterUser) -> dict:
-    if users_collection.find_one({"email": data.email}):
-        raise HTTPException(400, "User exist")
+def register(data: RegisterUser) -> dict[str, str]:
+    """
+    Register a new user.
 
-    user_id = str(uuid.uuid4())
+    Accepts JSON with `email` and `password`. Returns a dictionary
+    with registration `status` and generated `user_id`.
 
-    users_collection.insert_one({
-        "user_id": user_id,
-        "email": data.email,
-        "password_hash": security.hash_password(data.password)
-    })
-
-    return {"status": "ok", "user_id": user_id}
+    Responses:
+    - 200: {"status": "ok", "user_id": "<uuid>"}
+    - 400: if a user with the provided email already exists
+    """
+    return AuthService.register(data.email, data.password)
 
 @router.post("/login")
-def login(data: LoginUser) -> dict:
-    user = users_collection.find_one({"email": data.email})
-    if not user:
-        raise HTTPException(400, "Incorrect email or password")
+def login(data: LoginUser) -> dict[str, str]:
+    """
+    Authenticate user and return access token.
 
-    if not security.verify_password(data.password, user["password_hash"]):
-        raise HTTPException(400, "Incorrect email or password")
-
-    token = security.create_jwt_token(user["user_id"])
-
-    return {"access_token": token}
+    Accepts JSON with `email` and `password`. On success returns:
+    - 200: {"access_token": "<jwt-token>"}
+    - 400: if credentials are invalid
+    """
+    return AuthService.login(data.email, data.password)

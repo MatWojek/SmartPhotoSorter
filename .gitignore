@@ -1,1 +1,5 @@
 docs/command.txt
+docs/testing.txt
+
+.venv/
+venv/
