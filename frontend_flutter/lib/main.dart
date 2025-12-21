@@ -1,25 +1,37 @@
 import 'package:flutter/material.dart';
 import 'features/home/home_page.dart';
+import 'core/app_theme.dart';
+import 'core/theme_controller.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const SmartPhotoOrganizerApp());
+  final controller = ThemeController();
+  await controller.load();
+  runApp(SmartPhotoOrganizerApp(controller: controller));
 }
 
 
 class SmartPhotoOrganizerApp extends StatelessWidget {
-  const SmartPhotoOrganizerApp({super.key});
+  final ThemeController controller;
+  const SmartPhotoOrganizerApp({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'SmartPhotoOrganizer',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
-        useMaterial3: true,
+    return ThemeControllerProvider(
+      controller: controller,
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'SmartPhotoOrganizer',
+            theme: classicLightTheme(),
+            darkTheme: classicDarkTheme(),
+            themeMode: controller.mode,
+            home: const HomePage(),
+          );
+        },
       ),
-      home: const HomePage(),
     );
   }
 }

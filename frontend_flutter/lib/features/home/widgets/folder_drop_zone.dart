@@ -11,7 +11,7 @@ class FolderDropZone extends StatelessWidget {
         height: 110,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.blueGrey, width: 2),
+          border: Border.all(color: Theme.of(context).colorScheme.primary, width: 2),
         ),
         child: InkWell(
           onTap: () {
@@ -19,13 +19,14 @@ class FolderDropZone extends StatelessWidget {
               const SnackBar(content: Text('Choose folder (mock action)')),
             );
           }, 
-          child: const Center(
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.drive_folder_upload, size: 30),
-                SizedBox(height: 8),
-                Text('Choose or drop folder with images'),
+                Icon(Icons.drive_folder_upload, size: 30, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 8),
+                Text('Choose or drop folder with images',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
               ],
             ),
           ),

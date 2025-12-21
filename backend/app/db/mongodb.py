@@ -1,7 +1,7 @@
 import os
 from pymongo import MongoClient
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://root:example123@127.0.0.1:27017/?authSource=admin&authMechanism=SCRAM-SHA-256")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb://root:example123@127.0.0.1:27017/?authSource=admin")
 
 client = MongoClient(MONGO_URL)
 

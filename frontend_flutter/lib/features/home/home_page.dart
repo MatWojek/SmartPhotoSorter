@@ -3,7 +3,6 @@ import '../../models/person.dart';
 import 'widgets/folder_drop_zone.dart';
 import 'widgets/person_grid.dart';
 import '../navigation/app_top_bar.dart';
-import '../auth/auth_panel.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -26,17 +25,17 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppTopBar(
         loggedIn: loggedIn,
-        onLoginToggle: () => setState(() {
-          loggedIn = !loggedIn;
-        }),
+        onAuthChanged: (isLoggedIn, {userId, token}) {
+          setState(() {
+            loggedIn = isLoggedIn;
+          });
+        },
       ),
       body: Column(
-        children: [
-          AuthPanel(loggedIn: loggedIn),
-          const SizedBox(height: 8),
-          const FolderDropZone(),
-          const Divider(height: 32),
-          Expanded(child: PersonGrid(persons: persons)),
+        children: const [
+          FolderDropZone(),
+          Divider(height: 32),
+          Expanded(child: PersonGrid(persons: [])),
         ],
       ),
     );
