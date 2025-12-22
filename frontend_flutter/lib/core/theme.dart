@@ -6,16 +6,16 @@ class ClassicStyle {
   // colors (hex / rgb)
 
   // darkmode
-  static const Color navy = Color(0xFF0F044C); 
-  static const Color violet = Color(0xFF141E61); 
-  static const Color light_gray = Color(0xFF787A91);
-  static const Color new_white = Color(0xFFEEEEEE);
+  static const Color navy = Color.fromARGB(255, 25, 8, 124); 
+  static const Color violet = Color.fromARGB(255, 29, 44, 141); 
+  static const Color lightGray = Color(0xFF787A91);
+  static const Color newWhite = Color(0xFFEEEEEE);
 
   // lightmode
   static const Color blue = Color(0xFF3674B5); 
-  static const Color medium_blue = Color(0xFF578FCA); 
-  static const Color light_blue = Color(0xFFA1E3F9);
-  static const Color mint_green = Color(0xFFD1F8EF);
+  static const Color mediumBlue = Color(0xFF578FCA); 
+  static const Color lightBlue = Color(0xFFA1E3F9);
+  static const Color mintGreen = Color(0xFFD1F8EF);
 
   // texts styles
   static const TextStyle title =

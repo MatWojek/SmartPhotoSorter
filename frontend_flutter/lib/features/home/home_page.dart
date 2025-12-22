@@ -13,6 +13,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool loggedIn = false;
+  String? selectedFolder;
 
   final List<Person> persons = [
     Person(name: 'Anna', photos: 124),
@@ -32,10 +33,30 @@ class _HomePageState extends State<HomePage> {
         },
       ),
       body: Column(
-        children: const [
-          FolderDropZone(),
-          Divider(height: 32),
-          Expanded(child: PersonGrid(persons: [])),
+        children: [
+          FolderDropZone(
+            selectedPath: selectedFolder,
+            onClearSelected: () => setState(() => selectedFolder = null),
+            onFolderSelected: (path) {
+              setState(() => selectedFolder = path);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Start: $path')),
+              );
+            },
+          ),
+          if (selectedFolder != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Selected folder: $selectedFolder',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ),
+          const Divider(height: 32),
+          const Expanded(child: PersonGrid(persons: [])),
         ],
       ),
     );

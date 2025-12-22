@@ -17,3 +17,9 @@ try:
 except Exception:
 	# Index creation will be skipped if permissions are insufficient or already created
 	pass
+
+# Ensure unique nickname to prevent duplicates
+try:
+    users_collection.create_index("username", unique=True)
+except Exception:
+    pass

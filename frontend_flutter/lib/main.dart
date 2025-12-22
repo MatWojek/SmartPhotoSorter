@@ -10,7 +10,6 @@ void main() async {
   runApp(SmartPhotoOrganizerApp(controller: controller));
 }
 
-
 class SmartPhotoOrganizerApp extends StatelessWidget {
   final ThemeController controller;
   const SmartPhotoOrganizerApp({super.key, required this.controller});

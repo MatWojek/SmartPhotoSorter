@@ -17,34 +17,41 @@ class AuthLoginCard extends StatefulWidget {
 }
 
 class _AuthLoginCardState extends State<AuthLoginCard> {
-  final _emailCtrl = TextEditingController();
+  final _loginCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
 
   @override
   void dispose() {
-    _emailCtrl.dispose();
+    _loginCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
+  }
+
+  bool _isEmail(String v) {
+    final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return emailRegex.hasMatch(v);
   }
 
   void _showMsg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _login() async {
-    final email = _emailCtrl.text.trim();
+    final input = _loginCtrl.text.trim();
     final pass = _passCtrl.text;
 
-    if (email.isEmpty || pass.isEmpty) {
-      _showMsg('Enter your email and password');
+    if (input.isEmpty || pass.isEmpty) {
+      _showMsg('Enter your email or username and password');
       return;
     }
 
+    final loginValue = _isEmail(input) ? input.toLowerCase() : input; 
+
     setState(() => _loading = true);
     try {
-      final res = await ApiService.login(email, pass);
+      final res = await ApiService.login(loginValue, pass);
       if (res.containsKey('access_token')) {
         final token = res['access_token'] as String;
-        _showMsg('Zalogowano');
+        _showMsg('Logged in');
         widget.onAuthChanged(true, token: token);
       } else {
         _showMsg(res.toString());
@@ -77,7 +84,7 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
               children: [
                 const Text('Sign in', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+                TextField(controller: _loginCtrl, decoration: const InputDecoration(labelText: 'Email or Username')),
                 const SizedBox(height: 12),
                 TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
                 const SizedBox(height: 12),

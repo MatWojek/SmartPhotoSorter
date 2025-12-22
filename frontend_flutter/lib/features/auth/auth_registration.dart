@@ -16,6 +16,9 @@ class AuthRegistrationCard extends StatefulWidget {
 }
 
 class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
+  final _usernameCtrl = TextEditingController(); 
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _pass2Ctrl = TextEditingController();
@@ -27,52 +30,60 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
     _emailCtrl.dispose();
     _passCtrl.dispose();
     _pass2Ctrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _usernameCtrl.dispose();
     super.dispose();
   }
 
   void _showMsg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _register() async {
-    final email = _emailCtrl.text.trim();
-    final pass = _passCtrl.text;
+  final email = _emailCtrl.text.trim();
+  final pass = _passCtrl.text;
+  final pass2 = _pass2Ctrl.text;
+  final firstName = _firstNameCtrl.text.trim();
+  final lastName = _lastNameCtrl.text.trim();
+  final username = _usernameCtrl.text.trim();
 
-    if (email.isEmpty || pass.isEmpty) {
-      _showMsg('Enter your email and password');
-      return;
-    }
-    if (_pass2Ctrl.text != pass) {
-      _showMsg('Login error');
-      return;
-    }
+  if ([firstName, lastName, username, email, pass, pass2].any((v) => v.isEmpty)) {
+    _showMsg('Please fill in all fields');
+    return;
+  }
+  if (pass2 != pass) {
+    _showMsg('Passwords is not the same');
+    return;
+  }
 
-    setState(() => _loading = true);
-    try {
-      final res = await ApiService.register(email, pass);
+  setState(() => _loading = true);
+  try {
+    final res = await ApiService.register(
+      firstName: firstName,
+      lastName: lastName,
+      username: username,
+      email: email,
+      password: pass,
+    );
 
-      if (res.containsKey('user_id')) {
-        _userId = res['user_id'] as String?;
-        // Auto-login
-        final loginRes = await ApiService.login(email, pass);
-        if (loginRes.containsKey('access_token')) {
-          final token = loginRes['access_token'] as String;
-          widget.onAuthChanged(true, userId: _userId, token: token);
-          _showMsg('Registered and logged in');
-        } else {
-          _showMsg('Registered but login failed: ${loginRes.toString()}');
-        }
-      } else if (res.containsKey('access_token')) {
-        final token = res['access_token'] as String;
-        widget.onAuthChanged(true, token: token);
+    if (res.containsKey('user_id')) {
+      _userId = res['user_id'] as String?;
+      final loginRes = await ApiService.login(email, pass);
+      if (loginRes.containsKey('access_token')) {
+        final token = loginRes['access_token'] as String;
+        widget.onAuthChanged(true, userId: _userId, token: token);
         _showMsg('Registered and logged in');
       } else {
-        _showMsg(res.toString());
+        _showMsg('Registered but login failed: ${loginRes.toString()}');
       }
-    } catch (e) {
-      _showMsg('Login error');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    } else {
+      _showMsg(res.toString());
     }
+  } catch (e) {
+    _showMsg('Registration error: $e');
+  } finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +113,7 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimary)),
                 const SizedBox(height: 12),
                 Text('To keep connected please login with your personal info',
-                    textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7))),
+                    textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onPrimary)),
                 const SizedBox(height: 16),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
@@ -133,12 +144,19 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
               children: [
                 const Text('Create account', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
+                TextField(controller: _firstNameCtrl, decoration: const InputDecoration(labelText: 'First Name')),
+                const SizedBox(height: 12),
+                TextField(controller: _lastNameCtrl, decoration: const InputDecoration(labelText: 'Last Name')),
+                const SizedBox(height: 12),
+                TextField(controller: _usernameCtrl, decoration: const InputDecoration(labelText: 'Username')),
+                const SizedBox(height: 12),
                 TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
                 const SizedBox(height: 12),
                 TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
                 const SizedBox(height: 12),
                 TextField(controller: _pass2Ctrl, decoration: const InputDecoration(labelText: 'Confirm password'), obscureText: true),
                 const SizedBox(height: 16),
+                
                 SizedBox(
                   width: 160,
                   child: ElevatedButton(

@@ -40,6 +40,7 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
             },
             child: const Text('Login'),
           ),
+          const SizedBox(width: 8),
           TextButton(
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.onPrimary,

@@ -5,6 +5,9 @@ from app.auth.service import AuthService
 router = APIRouter()
 
 class RegisterUser(BaseModel):
+    first_name: str
+    last_name: str
+    username: str
     email: str
     password: str
 
@@ -17,14 +20,14 @@ def register(data: RegisterUser) -> dict[str, str]:
     """
     Register a new user.
 
-    Accepts JSON with `email` and `password`. Returns a dictionary
+    Accepts JSON with `email` or `username` and `password`. Returns a dictionary
     with registration `status` and generated `user_id`.
 
     Responses:
     - 200: {"status": "ok", "user_id": "<uuid>"}
-    - 400: if a user with the provided email already exists
+    - 400: if a user with the provided email or username already exists
     """
-    return AuthService.register(data.email, data.password)
+    return AuthService.register(data.first_name, data.last_name, data.username, data.email, data.password)
 
 @router.post("/login")
 def login(data: LoginUser) -> dict[str, str]:

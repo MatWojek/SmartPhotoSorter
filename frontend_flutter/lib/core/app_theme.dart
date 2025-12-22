@@ -5,9 +5,9 @@ ThemeData classicLightTheme() {
   final scheme = ColorScheme.light(
     primary: ClassicStyle.blue,
     onPrimary: Colors.white,
-    secondary: ClassicStyle.medium_blue,
+    secondary: ClassicStyle.mediumBlue,
     onSecondary: Colors.white,
-    tertiary: ClassicStyle.light_blue,
+    tertiary: ClassicStyle.lightBlue,
     onTertiary: Colors.black,
     surface: Colors.white,
     onSurface: Colors.black87,
@@ -34,7 +34,7 @@ ThemeData classicLightTheme() {
         side: BorderSide(color: scheme.primary),
       ),
     ),
-    dividerColor: scheme.secondary.withOpacity(0.2),
+    dividerColor: scheme.secondary,
   );
 }
 
@@ -43,13 +43,13 @@ ThemeData classicDarkTheme() {
   final background = const Color(0xFF0E0E12);
   final scheme = ColorScheme.dark(
     primary: ClassicStyle.navy,
-    onPrimary: ClassicStyle.new_white,
+    onPrimary: ClassicStyle.newWhite,
     secondary: ClassicStyle.violet,
-    onSecondary: ClassicStyle.new_white,
+    onSecondary: ClassicStyle.newWhite,
     surface: surface,
-    onSurface: ClassicStyle.new_white,
+    onSurface: ClassicStyle.newWhite,
     error: Colors.red.shade400,
-    onError: ClassicStyle.new_white,
+    onError: ClassicStyle.newWhite,
   );
 
   return ThemeData(
