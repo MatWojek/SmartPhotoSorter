@@ -55,11 +55,11 @@ class AuthService:
         """
         Authenticate a user by email or nickname and return a JWT token.
         """
-        # Normalize email the same way as during registration
+        # Normalize login input (email or username)
         login = email.strip().lower()
 
         user = users_collection.find_one({
-            "$or": [{"email": email}, {"nickname": login}]
+            "$or": [{"email": login}, {"username": login}]
         })
         if not user:
             raise HTTPException(

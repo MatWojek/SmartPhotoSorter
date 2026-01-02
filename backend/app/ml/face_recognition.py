@@ -1,197 +1,178 @@
-# import hashlib
-# from importlib.resources import files
-# import os 
-# import shutil 
-# import numpy
+import os
+import cv2
+import numpy as np
+import hashlib
+from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 
-# import cv2
-# import face_recognition 
-# from sklearn.cluster import DBSCAN
+ImagePath = str
+ProgressCb = Callable[[dict], None]
 
-# # TODO: Define constants
-# # - Set constants for image formats to process (e.g., .jpg, .png).
-# # - Define thresholds for face recognition and clustering.
 
-# # TODO: Load training data
-# # - Traverse the training folders.
-# # - Extract face encodings for each person from images in their respective folders.
-# # - Store the encodings and associate them with the folder/person name.
+def list_images(folder: str, exts: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".bmp")) -> List[ImagePath]:
+    base = Path(folder)
+    return [
+        str(base / name)
+        for name in os.listdir(folder)
+        if (base / name).is_file() and name.lower().endswith(exts)
+    ]
 
-# # TODO: Train the model
-# # - Use clustering (e.g., DBSCAN) or other machine learning techniques to group similar faces.
-# # - Save the trained model or encodings for later use.
 
-# # TODO: Define sorting logic
-# # - Traverse the folder containing unsorted images.
-# # - Detect faces in each image.
-# # - Compare detected faces with the trained encodings to identify the person.
-# # - Move the image to the corresponding folder based on the identified person.
+def md5_file(path: str) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
-# # TODO: Handle unknown faces
-# # - If a face does not match any known encoding, move it to an "unknown" folder.
-# # - Optionally, allow the user to manually classify unknown faces.
 
-# # TODO: Optimize performance
-# # - Use batch processing for face detection and encoding.
-# # - Skip images without detectable faces to save time.
+def read_image(path: str) -> Optional[np.ndarray]:
+    img = cv2.imread(path)
+    return img
 
-# # TODO: Error handling
-# # - Handle cases where no faces are detected in an image.
-# # - Handle corrupted or unsupported image files gracefully.
 
-# # TODO: Logging
-# # - Log the sorting process, including the number of images processed, skipped, or moved.
-# # - Log errors for debugging purposes.
+def detect_faces(detector: cv2.CascadeClassifier, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = detector.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(64, 64))
+    # ensure a plain Python list of tuples
+    return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
 
-# # TODO: Testing
-# # - Test the module with a variety of datasets to ensure accuracy.
-# # - Validate that images are sorted into the correct folders.
 
-# # TODO: Integrate with GUI
-# # - Add a button in the GUI to trigger the face sorting process.
-# # - Display progress and results in the GUI.
+def face_embed(img: np.ndarray, box: Tuple[int, int, int, int], size: int = 128) -> np.ndarray:
+    x, y, w, h = box
+    crop = img[y:y + h, x:x + w]
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    resized = cv2.resize(gray, (size, size), interpolation=cv2.INTER_AREA)
+    vec = resized.astype(np.float32).reshape(-1)
+    vec /= (np.linalg.norm(vec) + 1e-8)
+    return vec
 
-# # TODO: Optional enhancements
-# # - Add support for incremental learning (e.g., adding new faces to the model without retraining from scratch).
-# # - Allow the user to adjust clustering parameters via the GUI.
-# # - Add a preview feature to show detected faces before sorting.
 
-# class FaceSorter: 
+def _haar_cascade_path() -> str:
+    # Prefer bundle path near cv2 module
+    base = Path(cv2.__file__).resolve().parent
+    cand = base / "data" / "haarcascade_frontalface_default.xml"
+    if cand.exists():
+        return str(cand)
+    # Fallback to cv2.data if available in this build
+    data_attr = getattr(cv2, "data", None)
+    if isinstance(data_attr, str):
+        cand2 = Path(data_attr) / "haarcascade_frontalface_default.xml"
+        if cand2.exists():
+            return str(cand2)
+    raise FileNotFoundError("Could not locate haarcascade_frontalface_default.xml for OpenCV.")
 
-#     def __init__(self, training_folder: str, unknown_folder: str, output_folder: str) -> None: 
-#         self.training_folder = training_folder 
-#         self.unknown_folder = unknown_folder 
-#         self.output_folder = output_folder 
-#         self.known_encodings = [] 
-#         self.known_names = [] 
 
-#         # Load training data 
-#         self._load_training_data(
-#             self.training_folder, 
-#             self.known_encodings, 
-#             self.knoSwn_names
-#         )
+class FaceSorter:
+    def __init__(self) -> None:
+        self.detector = cv2.CascadeClassifier(_haar_cascade_path())
+        self.person_embeds: Dict[str, List[np.ndarray]] = {}
+        self.person_means: Dict[str, np.ndarray] = {}
+        self.duplicate_hashes: set[str] = set()
 
-#         # Define clustering model
-#         self.clustering_model = DBSCAN(eps=0.5, min_samples=2)
-#         if self.known_encodings:
-#             self.clustering_model.fit(self.known_encodings)
-#             self.known_clusters = self.clustering_model.labels_
-#         else:
-#             self.known_clusters = []
+    def train_from_folders(self, person_folders: Dict[str, str], progress: Optional[ProgressCb] = None) -> None:
+        total = sum(len(list_images(folder)) for folder in person_folders.values())
+        done = 0
 
-#     def _load_training_data(self, folder: str, encodings: list, names: list) -> None:
-#         """ Load training data from the specified folder. """
-#         for person_name in os.listdir(folder):
-#             person_folder = os.path.join(folder, person_name)
-#             if not os.path.isdir(person_folder):
-#                 continue
-#             for image_name in os.listdir(person_folder):
-#                 image_path = os.path.join(person_folder, image_name)
-#                 image = face_recognition.load_image_file(image_path)
-#                 face_encs = face_recognition.face_encodings(image)
-#                 if face_encs:
-#                     encodings.append(face_encs[0])
-#                     names.append(person_name)
+        for person, folder in person_folders.items():
+            imgs = list_images(folder)
+            embeds: List[np.ndarray] = []
+            for path in imgs:
+                img = read_image(path)
+                if img is None:
+                    done += 1
+                    if progress:
+                        progress({"status": "skip", "current": done, "total": total, "photo": path, "message": "Unreadable"})
+                    continue
+                faces = detect_faces(self.detector, img)
+                if not faces:
+                    done += 1
+                    if progress:
+                        progress({"status": "skip", "current": done, "total": total, "photo": path, "message": "No face"})
+                    continue
+                emb = face_embed(img, faces[0])
+                embeds.append(emb)
+                done += 1
+                if progress:
+                    progress({"status": "train", "current": done, "total": total, "photo": path, "message": f"Added sample for {person}"})
+            if embeds:
+                self.person_embeds[person] = embeds
+                self.person_means[person] = np.mean(np.stack(embeds), axis=0)
 
-#     def sort_faces(self, unsorted_folder: str) -> None:
-#         """ Sort faces in the unsorted folder. """
-#         for image_name in os.listdir(unsorted_folder):
-#             image_path = os.path.join(unsorted_folder, image_name)
-#             image = face_recognition.load_image_file(image_path)
-#             face_locations = face_recognition.face_locations(image)
-#             face_encs = face_recognition.face_encodings(image, face_locations)
-#             if not face_encs:
-#                 continue
-#             matched = False
-#             for face_enc in face_encs:
-#                 distances = face_recognition.face_distance(self.known_encodings, face_enc)
-#                 if len(distances) == 0:
-#                     continue
-#                 best_match_index = numpy.argmin(distances)
-#                 if distances[best_match_index] < 0.6:
-#                     person_name = self.known_names[best_match_index]
-#                     output_person_folder = os.path.join(self.output_folder, person_name)
-#                     os.makedirs(output_person_folder, exist_ok=True)
-#                     shutil.move(image_path, os.path.join(output_person_folder, image_name))
-#                     matched = True
-#                     break
-#             if not matched:
-#                 os.makedirs(self.unknown_folder, exist_ok=True)
-#                 shutil.move(image_path, os.path.join(self.unknown_folder, image_name))
-#                 file_hash = hashlib.md5(image_path.encode()).hexdigest()
-#                 unknown_image_path = os.path.join(self.unknown_folder, f"{file_hash}_{image_name}")
-#                 shutil.move(image_path, unknown_image_path)
-#                 files[file_hash] = unknown_image_path
+    def _match_person(self, emb: np.ndarray, threshold: float = 0.35) -> Optional[str]:
+        best_name = None
+        best_dist = 1e9
+        for name, mean in self.person_means.items():
+            dist = np.linalg.norm(emb - mean)
+            if dist < best_dist:
+                best_dist, best_name = dist, name
+        if best_name is not None and best_dist <= threshold:
+            return best_name
+        return None
 
-#     def get_unknown_faces(self) -> list:
-#         """ Return the list of unknown face image paths. """
-#         return [files[file_hash] for file_hash in files]
+    def sort_folder(self, unsorted_folder: str, output_base: str, unknown_folder: str, progress: Optional[ProgressCb] = None) -> Dict[str, int]:
+        paths = list_images(unsorted_folder)
+        total = len(paths)
+        moved_known = moved_unknown = skipped = removed_dups = 0
 
-#     def classify_unknown_faces(self) -> None:
-#         """ Classify unknown faces using the clustering model. """
-#         for file_hash, image_path in files.items():
-#             image = face_recognition.load_image_file(image_path)
-#             face_locations = face_recognition.face_locations(image)
-#             face_encs = face_recognition.face_encodings(image, face_locations)
-#             if not face_encs:
-#                 continue
-#             for face_enc in face_encs:
-#                 cluster_label = self.clustering_model.fit_predict([face_enc])
-#                 if cluster_label[0] != -1:
-#                     person_name = self.known_names[cluster_label[0]]
-#                     output_person_folder = os.path.join(self.output_folder, person_name)
-#                     os.makedirs(output_person_folder, exist_ok=True)
-#                     shutil.move(image_path, os.path.join(output_person_folder, os.path.basename(image_path)))
-#                     del files[file_hash]
-#                     break
-#                 else:
-#                     continue
+        os.makedirs(output_base, exist_ok=True)
+        os.makedirs(unknown_folder, exist_ok=True)
 
-#     def clear_unknown_faces(self) -> None:
-#         """ Clear the unknown faces folder. """
-#         for file_hash, image_path in files.items():
-#             try:
-#                 os.remove(image_path)
-#             except Exception as e:
-#                 print(f"Error deleting unknown face image {image_path}: {e}")
-#         files.clear()
+        for i, path in enumerate(paths, start=1):
+            file_md5 = md5_file(path)
+            if file_md5 in self.duplicate_hashes:
+                # exact duplicate found; remove
+                try:
+                    os.remove(path)
+                    removed_dups += 1
+                    if progress:
+                        progress({"status": "duplicate", "current": i, "total": total, "photo": path, "message": "Removed duplicate"})
+                    continue
+                except Exception as e:
+                    if progress:
+                        progress({"status": "error", "current": i, "total": total, "photo": path, "message": f"Dup removal failed: {e}"})
+            else:
+                self.duplicate_hashes.add(file_md5)
 
-#     def retrain_model(self) -> None:
-#         """ Retrain the clustering model with updated known encodings. """
-#         self.clustering_model.fit(self.known_encodings)
-#         self.known_clusters = self.clustering_model.labels_
+            img = read_image(path)
+            if img is None:
+                skipped += 1
+                if progress:
+                    progress({"status": "skip", "current": i, "total": total, "photo": path, "message": "Unreadable"})
+                continue
 
-#     def add_new_face(self, person_name: str, image_path: str) -> None:
-#         """ Add a new face to the training data and retrain the model. """
-#         image = face_recognition.load_image_file(image_path)
-#         face_encs = face_recognition.face_encodings(image)
-#         if face_encs:
-#             self.known_encodings.append(face_encs[0])
-#             self.known_names.append(person_name)
-#             self.retrain_model()
-#         else:
-#             print(f"No face found in the image {image_path}.")
-#             return
+            faces = detect_faces(self.detector, img)
+            if not faces:
+                skipped += 1
+                if progress:
+                    progress({"status": "skip", "current": i, "total": total, "photo": path, "message": "No face"})
+                continue
 
-#     def save_model(self, model_path: str) -> None:
-#         """ Save the trained model to a file. """
-#         import pickle
-#         with open(model_path, 'wb') as f:
-#             pickle.dump({
-#                 'known_encodings': self.known_encodings,
-#                 'known_names': self.known_names,
-#                 'clustering_model': self.clustering_model
-#             }, f)
+            emb = face_embed(img, faces[0])
+            match = self._match_person(emb)
+            dest_dir = os.path.join(output_base, match) if match else unknown_folder
+            os.makedirs(dest_dir, exist_ok=True)
+            dest_path = os.path.join(dest_dir, os.path.basename(path))
+            try:
+                os.replace(path, dest_path)
+            except Exception:
+                # fallback if moving across devices
+                import shutil
+                shutil.move(path, dest_path)
 
-#     def load_model(self, model_path: str) -> None:
-#         """ Load the trained model from a file. """
-#         import pickle
-#         with open(model_path, 'rb') as f:
-#             data = pickle.load(f)
-#             self.known_encodings = data['known_encodings']
-#             self.known_names = data['known_names']
-#             self.clustering_model = data['clustering_model']
-#             self.known_clusters = self.clustering_model.labels_
+            if match:
+                moved_known += 1
+                if progress:
+                    progress({"status": "moved", "current": i, "total": total, "photo": path, "destination": dest_dir, "message": f"Sorted to {match}"})
+            else:
+                moved_unknown += 1
+                if progress:
+                    progress({"status": "moved", "current": i, "total": total, "photo": path, "destination": dest_dir, "message": "Sorted to unknown"})
 
-    
+        return {
+            "processed": total,
+            "known": moved_known,
+            "unknown": moved_unknown,
+            "skipped": skipped,
+            "duplicates_removed": removed_dups,
+        }

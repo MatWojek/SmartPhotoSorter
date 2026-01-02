@@ -132,7 +132,7 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
                 Text(
                   'Enter your personal details and start journey with us',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton(

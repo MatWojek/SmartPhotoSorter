@@ -3,6 +3,7 @@ import '../../models/person.dart';
 import 'widgets/folder_drop_zone.dart';
 import 'widgets/person_grid.dart';
 import '../navigation/app_top_bar.dart';
+import 'widgets/sort_options.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -55,6 +56,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
+                      SortOptionsPanel(
+            selectedFolder: selectedFolder,
+            // currentUserId: ... // if you have userId with auth, write it
+          ),
+          const SizedBox(height: 8),
           const Divider(height: 32),
           const Expanded(child: PersonGrid(persons: [])),
         ],
