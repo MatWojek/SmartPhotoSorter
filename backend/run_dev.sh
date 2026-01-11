@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-# Aktywuj venv jeśli istnieje
+# Active venv if exist
 if [[ -d .venv ]]; then source .venv/bin/activate; fi
-# Doinstaluj ws backend jeżeli brakuje
+# Install backend if is missing
 python - <<'PY'
 import importlib, subprocess, sys
 def ensure_websocket_support():

@@ -3,14 +3,23 @@ import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import 'progress_overlay.dart';
 import 'training_folders_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum RunMode { local, database }
 
 class SortOptionsPanel extends StatefulWidget {
   final String? selectedFolder;
-  final String? currentUserId; // optional: DB indexing
+  final String? currentUserId; 
+  final VoidCallback? onAfterTask;
+  final bool forceLocalOnly; 
 
-  const SortOptionsPanel({super.key, required this.selectedFolder, this.currentUserId});
+  const SortOptionsPanel({
+    super.key, 
+    required this.selectedFolder, 
+    this.currentUserId,
+    this.onAfterTask,
+    this.forceLocalOnly = false,
+  });
 
   @override
   State<SortOptionsPanel> createState() => _SortOptionsPanelState();
@@ -20,8 +29,20 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
   bool removeDuplicates = false;
   bool sortPhotos = false;
   bool manualCorrections = false; // future extension
+  static const _userIdPrefKey = 'current_user_id';
+
+  Future<String?> _loadUserIdFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_userIdPrefKey);
+  }
+
+  Future<void> _saveUserIdToPrefs(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_userIdPrefKey, userId);
+  }
 
   Future<RunMode?> _chooseRunMode(BuildContext context) async {
+    if (widget.forceLocalOnly) return RunMode.local; 
     return showDialog<RunMode>(
       context: context,
       builder: (_) => AlertDialog(
@@ -70,10 +91,13 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       context: context,
       builder: (_) => ProgressOverlay(wsUrl: wsUrl, sseUri: sseUri),
     );
+    widget.onAfterTask?.call();
   }
 
   Future<void> _startDb(BuildContext context, String folder) async {
     String? userId = widget.currentUserId;
+    userId ??= await _loadUserIdFromPrefs(); // try from memory
+
     if (userId == null || userId.isEmpty) {
       userId = await showDialog<String>(
         context: context,
@@ -93,6 +117,7 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
         },
       );
       if (userId == null || userId.isEmpty) return;
+      await _saveUserIdToPrefs(userId); // save after first
     }
 
     Map<String, String>? trainingFolders;
@@ -119,21 +144,22 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       context: context,
       builder: (_) => ProgressOverlay(wsUrl: wsUrl, sseUri: sseUri),
     );
+    widget.onAfterTask?.call();
   }
 
   Future<void> _handleAction(BuildContext context) async {
     final folder = widget.selectedFolder;
     if (folder == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Najpierw wybierz folder.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('First, select a folder.')));
       return;
     }
-    // Dodatkowa weryfikacja
+    // Additional verification
     if (!Directory(folder).existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybrany folder nie istnieje.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('The selected folder does not exist.')));
       return;
     }
     if (!removeDuplicates && !sortPhotos) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zaznacz co najmniej jedną opcję.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one option.')));
       return;
     }
 

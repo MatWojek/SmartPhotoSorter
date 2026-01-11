@@ -20,3 +20,12 @@ def create_person(data: CreatePerson):
 @router.get("/list/{user_id}")
 def list_persons(user_id: str):
     return PersonService.list_persons(user_id)
+
+@router.delete("/delete-folder/{user_id}/{person_name}")
+def delete_person_folder(user_id: str, person_name: str):
+    """
+    Deletes:
+    - person folder from disk
+    - person document from DB
+    """
+    return PersonService.delete_person_folder(user_id, person_name)

@@ -1,46 +1,65 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
-from .service import PhotoService, PhotoSaveResult
 from pathlib import Path
+from typing import Optional, List
+from pydantic import BaseModel
 
-router = APIRouter()
+from .service import PhotoService, PhotoSaveResult
+
+router = APIRouter(prefix="/photos", tags=["photos"])
+
+
+class PhotoSearchItem(BaseModel):
+    photo_id: str
+    filename: Optional[str] = None
+    path: Optional[str] = None
+    date_taken: Optional[str] = None
+    location: Optional[str] = None
+
+class ReassignBody(BaseModel):
+  person_name: str
+
+class DeleteBatchBody(BaseModel):
+  photo_ids: list[str]
 
 
 @router.post("/upload/{user_id}")
 def upload(user_id: str, file: UploadFile = File(...)) -> PhotoSaveResult:
-    """
-    Upload a photo.
-
-    Request body: multipart form with file under `file`.
-    Response: dict with `photo_id`, `filename` and `path`.
-    """
     return PhotoService.save_photo(user_id, file)
 
 
 @router.get("/get/{user_id}/{photo_id}")
 def get_photo(user_id: str, photo_id: str) -> FileResponse:
-    """
-    Return the file for a given user and photo id.
-
-    - 404 when photo document not found
-    - 404 when file path does not exist on disk
-    """
     photo = PhotoService.get_photo_doc(user_id, photo_id)
     if not photo:
-        raise HTTPException(status_code=404, detail="No photos found")
+        raise HTTPException(status_code=404, detail="No photo")
 
     path = Path(photo["path"])
     if not path.exists():
-        raise HTTPException(status_code=404, detail="File does not exist")
+        raise HTTPException(status_code=404, detail="File missing")
 
     return FileResponse(path)
 
 
-@router.get("/search/{user_id}/{person_name}")
-def search_person(user_id: str, person_name: str) -> list[dict[str, str]]:
-    """
-    Search photos by detected person name (case-insensitive).
-
-    Returns a list of objects with `photo_id` and `filename`.
-    """
+@router.get("/search/{user_id}/{person_name}", response_model=List[PhotoSearchItem])
+def search_person(user_id: str, person_name: str):
     return PhotoService.search_person(user_id, person_name)
+
+
+@router.delete("/delete/{user_id}/{photo_id}")
+def delete_photo(user_id: str, photo_id: str):
+    return PhotoService.delete_photo(user_id, photo_id)
+
+@router.post("/reassign/{user_id}/{photo_id}")
+def reassign(user_id: str, photo_id: str, data: ReassignBody):
+    from app.ml.face_recognition import FaceSorter
+    res = PhotoService.reassign_photo(user_id, photo_id, data.person_name)
+    if not res.get("path"):
+        raise HTTPException(status_code=404, detail="Photo not found or moved")
+    sorter = FaceSorter()
+    sorter.train_single(user_id, data.person_name, res["path"])
+    return {"status": "ok"}
+
+@router.post("/delete-batch/{user_id}")
+def delete_batch(user_id: str, body: DeleteBatchBody):
+    return PhotoService.delete_batch(user_id, body.photo_ids)

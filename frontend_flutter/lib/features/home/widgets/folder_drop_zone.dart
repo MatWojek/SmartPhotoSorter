@@ -21,6 +21,20 @@ class FolderDropZone extends StatefulWidget {
 
 class _FolderDropZoneState extends State<FolderDropZone> {
   bool _dragging = false;
+  String? _defaultFolder;
+
+  @override
+  void initState() {
+    super.initState();
+    // Try to auto-detect the default folder and select it.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _defaultFolder = await _findDefaultFolder();
+      if (_defaultFolder != null && (widget.selectedPath == null || widget.selectedPath!.isEmpty)) {
+        // Automatically use the default folder, even if empty.
+        widget.onFolderSelected?.call(_defaultFolder!);
+      }
+    });
+  }
 
   Future<bool> _folderHasImages(String path) async {
     final dir = Directory(path);
@@ -54,7 +68,10 @@ class _FolderDropZoneState extends State<FolderDropZone> {
   }
 
   Future<void> _pickDirectory(BuildContext context) async {
-    final path = await getDirectoryPath(confirmButtonText: 'Choose');
+    final path = await getDirectoryPath(
+      confirmButtonText: 'Choose',
+      initialDirectory: _defaultFolder,
+    );
     if (path == null) return;
     await _validateAndSelect(context, path);
   }
@@ -76,7 +93,6 @@ class _FolderDropZoneState extends State<FolderDropZone> {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -90,6 +106,7 @@ class _FolderDropZoneState extends State<FolderDropZone> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           height: 110,
+          width: double.infinity,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: _dragging ? color : color, width: _dragging ? 3 : 2),
@@ -97,29 +114,23 @@ class _FolderDropZoneState extends State<FolderDropZone> {
           ),
           child: InkWell(
             onTap: () => _pickDirectory(context),
-            child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Icon(Icons.drive_folder_upload, size: 30, color: color),
                   const SizedBox(height: 8),
-                  Text(
-                    'Choose or drop folder with images',
-                    style: TextStyle(color: onSurface),
-                  ),
                   if (widget.selectedPath != null) ...[
                     const SizedBox(height: 10),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
+                      constraints: const BoxConstraints(maxWidth: 820),
                       child: Chip(
                         avatar: const Icon(Icons.folder, size: 18),
-                         label: Tooltip(
+                        label: Tooltip(
                           message: widget.selectedPath!,
-                          child: Text(
-                            widget.selectedPath!,
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
+                          child: Text(widget.selectedPath!, overflow: TextOverflow.ellipsis, maxLines: 1),
                         ),
                         deleteIcon: const Icon(Icons.close),
                         onDeleted: widget.onClearSelected,
@@ -133,5 +144,26 @@ class _FolderDropZoneState extends State<FolderDropZone> {
         ),
       ),
     );
+  }
+
+  Future<String?> _findDefaultFolder() async {
+    // Candidates relative to typical dev run locations
+    final candidates = <String>[
+      '${Directory.current.path}${Platform.pathSeparator}backend${Platform.pathSeparator}smartphotosorterdb',
+      '${Directory.current.parent.path}${Platform.pathSeparator}backend${Platform.pathSeparator}smartphotosorterdb',
+      'backend${Platform.pathSeparator}smartphotosorterdb',
+      'smartphotosorterdb',
+    ];
+    for (final p in candidates) {
+      final d = Directory(p);
+      if (await d.exists()) return d.path;
+    }
+    // Fallback to user's Pictures if available
+    final home = Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) {
+      final pics = Directory('$home${Platform.pathSeparator}Pictures');
+      if (await pics.exists()) return pics.path;
+    }
+    return null;
   }
 }

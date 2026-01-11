@@ -25,10 +25,11 @@ def publish(task_id: str, event: dict):
     loop.call_soon_threadsafe(q.put_nowait, event)
 
 class SortLocalRequest(BaseModel):
-    training_folders: Dict[str, str]  # {person_name: folder_path}
+    training_folders: Optional[Dict[str, str]] = None
     unsorted_folder: str
     output_base: str
     unknown_folder: str
+    user_id: Optional[str] = None
 
 class IndexDbRequest(BaseModel):
     user_id: str
@@ -47,12 +48,22 @@ async def sort_local(req: SortLocalRequest, background_tasks: BackgroundTasks):
         ev["task_id"] = task_id
         publish(task_id, ev)
 
-    def run():
-        sorter.train_from_folders(req.training_folders, progress_cb)
-        summary = sorter.sort_folder(req.unsorted_folder, req.output_base, req.unknown_folder, progress_cb)
+    # Preload embeddings from DB if user_id given
+    if req.user_id:
+        sorter.load_from_db(req.user_id)
+
+    def sort_run():
+        summary = sorter.sort_folder(req.unsorted_folder, req.output_base, req.unknown_folder, progress_cb, user_id=req.user_id)
         publish(task_id, {"status": "done", "summary": summary, "task_id": task_id})
 
-    background_tasks.add_task(run)
+    def train_update_run():
+        if req.training_folders:
+            sorter.train_from_folders(req.training_folders, progress_cb, user_id=req.user_id)
+        elif req.user_id:
+            sorter.ensure_trained_for_user(req.user_id, progress_cb)
+
+    background_tasks.add_task(train_update_run)
+    background_tasks.add_task(sort_run)
     return {"status": "started", "task_id": task_id}
 
 @router.post("/index-db")

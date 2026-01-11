@@ -98,4 +98,46 @@ class ApiService {
     }
     return body;
   }
-}
+
+  static Future<List<Map<String, dynamic>>> searchPhotosByPerson(String userId, String personName) async {
+    final q = personName.trim();
+    if (q.isEmpty) return [];
+    try {
+      final res = await http.get(Uri.parse('$_base/photos/search/$userId/$q'));
+      if (res.statusCode >= 400) return [];
+      final body = jsonDecode(res.body);
+      return body is List ? body.cast<Map<String, dynamic>>() : [];
+    } catch (_) { return []; }
+  }
+
+  static Future<bool> deletePhoto(String userId, String photoId) async {
+    final res = await http.delete(Uri.parse('$_base/photos/delete/$userId/$photoId'));
+    return res.statusCode < 400;
+  }
+
+  static Future<bool> deletePersonFolder(String userId, String personName) async {
+    final res = await http.delete(Uri.parse('$_base/persons/delete-folder/$userId/$personName'));
+    return res.statusCode < 400;
+  }
+
+  static Future<bool> reassignPhoto(String userId, String photoId, String personName) async {
+    final res = await http.post(
+      Uri.parse('$_base/photos/reassign/$userId/$photoId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'person_name': personName}),
+    );
+    return res.statusCode < 400;
+  }
+
+  static Future<Map<String, dynamic>> deleteBatch(String userId, List<String> photoIds) async {
+    final res = await http.post(
+      Uri.parse('$_base/photos/delete-batch/$userId'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'photo_ids': photoIds}),
+    );
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  static String photoUrl(String userId, String photoId) => '$_base/photos/get/$userId/$photoId';
+} 
+  

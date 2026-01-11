@@ -39,6 +39,7 @@ dependencies:
   file_selector: ^1.0.3
   desktop_drop: ^0.4.4
   web_socket_channel: ^3.0.3
+  url_launcher: ^6.3.2
   
 dev_dependencies:
   flutter_test:

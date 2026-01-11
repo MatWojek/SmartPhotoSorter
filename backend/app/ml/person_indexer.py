@@ -1,11 +1,11 @@
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 import os
-import cv2
-import numpy as np
+import uuid
 
 from app.db.mongodb import photos_collection
+from app.db.mongodb import persons_collection
 from app.ml.face_recognition import list_images, read_image, detect_faces, face_embed, FaceSorter
 
 
@@ -20,13 +20,14 @@ def file_mtime(path: str) -> str:
 class PersonIndexer:
     def __init__(self, sorter: Optional[FaceSorter] = None) -> None:
         self.sorter = sorter or FaceSorter()
-        self.detector = self.sorter.detector
 
-    def index_folder(self, user_id: str, folder: str, known_persons: Optional[Dict[str, str]] = None) -> Dict[str, int]:
-        """
-        Index photos to MongoDB, storing detected person names (best match), face features,
-        date, location (None if unavailable), and link to the photo (path).
-        """
+    def index_folder(
+        self,
+        user_id: str,
+        folder: str,
+        known_persons: Optional[Dict[str, str]] = None
+    ) -> Dict[str, int]:
+
         if known_persons:
             self.sorter.train_from_folders(known_persons)
 
@@ -39,27 +40,67 @@ class PersonIndexer:
             if img is None:
                 skipped += 1
                 continue
-            faces = detect_faces(self.detector, img)
+
+            faces = detect_faces(None, img)
             if not faces:
                 skipped += 1
                 continue
 
-            emb = face_embed(img, faces[0])
-            name = self.sorter._match_person(emb) or "Unknown"
+            face_entries = []
 
-            doc = {
-                "photo_id": os.path.splitext(os.path.basename(path))[0],
+            for box in faces:
+                try:
+                    emb = face_embed(img, box)
+                except Exception:
+                    continue
+
+                name = self.sorter._match_person(emb)
+                person_name = name if name else "Unknown"
+
+                face_entries.append({
+                    "person_name": person_name,
+                    "person_id": None,  # supplemented with persons_collection
+                    "embedding": emb.tolist()
+                })
+
+            if not face_entries:
+                skipped += 1
+                continue
+
+            photo_doc = {
+                "photo_id": str(uuid.uuid4()),
                 "user_id": user_id,
                 "filename": os.path.basename(path),
                 "path": str(Path(path).resolve()),
-                "persons_detected": [name],
-                "face_features": emb.tolist(),
+                "faces": face_entries,
                 "metadata": {
                     "date_taken": file_mtime(path),
                     "location": None
                 }
             }
-            photos_collection.insert_one(doc)
+
+            photos_collection.insert_one(photo_doc)
             inserted += 1
 
-        return {"processed": total, "inserted": inserted, "skipped": skipped}
+            # updating persons_collection
+            for face in face_entries:
+                if face["person_name"] == "Unknown":
+                    continue
+
+                persons_collection.update_one(
+                    {"user_id": user_id, "name": face["person_name"]},
+                    {
+                        "$setOnInsert": {
+                            "person_id": str(uuid.uuid4()),
+                            "folder_path": ""
+                        },
+                        "$inc": {"photos_count": 1}
+                    },
+                    upsert=True
+                )
+
+        return {
+            "processed": total,
+            "inserted": inserted,
+            "skipped": skipped
+        }

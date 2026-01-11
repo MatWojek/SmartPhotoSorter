@@ -60,3 +60,9 @@ try:
 	users_collection.create_index("username", unique=True)
 except Exception:
 	pass
+
+try:
+    photos_collection.create_index([("user_id", 1), ("md5", 1)], unique=True)
+except Exception:
+    pass
+

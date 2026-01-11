@@ -4,3 +4,9 @@ docs/to_documentation.txt
 
 .venv/
 venv/
+
+.vscode
+
+backend/smartphotosorterdb
+
+app/

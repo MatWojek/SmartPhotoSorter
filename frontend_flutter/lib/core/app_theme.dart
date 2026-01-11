@@ -40,7 +40,6 @@ ThemeData classicLightTheme() {
 
 ThemeData classicDarkTheme() {
   final surface = const Color(0xFF121212);
-  final background = const Color(0xFF0E0E12);
   final scheme = ColorScheme.dark(
     primary: ClassicStyle.navy,
     onPrimary: ClassicStyle.newWhite,

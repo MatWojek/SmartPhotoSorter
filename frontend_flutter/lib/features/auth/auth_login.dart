@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import '../../core/theme.dart';
 
 class AuthLoginCard extends StatefulWidget {
   final void Function() onSwitchToSignUp;

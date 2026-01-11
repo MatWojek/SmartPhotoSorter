@@ -1,15 +1,31 @@
+import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 class TrainingFoldersDialog extends StatefulWidget {
   const TrainingFoldersDialog({super.key});
-
   @override
   State<TrainingFoldersDialog> createState() => _TrainingFoldersDialogState();
 }
 
 class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
   final List<MapEntry<String, String>> _pairs = [];
+
+  String _folderBaseName(String path) {
+    final parts = path.split(RegExp(r'[\\/]+'));
+    return parts.isNotEmpty ? parts.last : path;
+  }
+
+  String _uniqueName(String base) {
+    var name = base; 
+    var i = 2; 
+    final existing = _pairs.map((e) => e.key).toSet(); 
+    while (existing.contains(name)) {
+      name = '$base ($i)';
+      i++;
+    }
+    return name;
+  }
 
   Future<void> _addPair() async {
     final nameCtrl = TextEditingController();
@@ -48,9 +64,12 @@ class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
           TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
           FilledButton(
             onPressed: () {
-              final name = nameCtrl.text.trim();
+              var name = nameCtrl.text.trim();
+              if (name.isEmpty && folder != null) {
+                name = _folderBaseName(folder!);
+              }
               if (name.isNotEmpty && folder != null) {
-                _pairs.add(MapEntry(name, folder!));
+                _pairs.add(MapEntry(_uniqueName(name), folder!));
                 Navigator.of(context).pop();
               }
             },
@@ -60,6 +79,20 @@ class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
       ),
     );
 
+    setState(() {});
+  }
+
+  Future<void> _bulkImportFromParent() async {
+    final parent = await getDirectoryPath(confirmButtonText: 'Select');
+    if (parent == null) return;
+    final dir = Directory(parent);
+    if (!dir.existsSync()) return;
+
+    final subs = dir.listSync(followLinks: false).whereType<Directory>();
+    for (final d in subs) {
+      final name = _uniqueName(_folderBaseName(d.path));
+      _pairs.add(MapEntry(name, d.path));
+    }
     setState(() {});
   }
 
@@ -88,10 +121,20 @@ class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.add),
-                onPressed: _addPair,
-                label: const Text('Add person + folder'),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.add),
+                    onPressed: _addPair,
+                    label: const Text('Add person + folder'),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.folder_open),
+                    onPressed: _bulkImportFromParent,
+                    label: const Text('Import subfolders as persons'),
+                  ),
+                ],
               ),
             ),
           ],

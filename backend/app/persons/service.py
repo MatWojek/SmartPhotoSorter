@@ -1,41 +1,56 @@
+import shutil
 from pathlib import Path
-import uuid
 from app.db.mongodb import persons_collection
-from app.photos.service import UPLOAD_DIR
+
+from app.config import STORAGE_ROOT
+
+BASE_STORAGE = STORAGE_ROOT/"persons"
+
 
 class PersonService:
-    """
-    Manage person folders and records:
-    - create a person entry (folder on disk + mongodb doc)
-    """
 
     @staticmethod
-    def create_person(user_id: str, person_name: str) -> dict:
-        person_id = str(uuid.uuid4())
-
-        # create folder under user uploads: /app/storage/user_uploads/<user_id>/<person_name>/
-        person_folder = UPLOAD_DIR / user_id / person_name
-        person_folder.mkdir(parents=True, exist_ok=True)
+    def create_person(user_id: str, name: str):
+        path = BASE_STORAGE / user_id / name
+        path.mkdir(parents=True, exist_ok=True)
 
         doc = {
-            "person_id": person_id,
             "user_id": user_id,
-            "name": person_name,
-            "folder_path": str(person_folder),
-            "photos_count": 0
+            "name": name,
+            "path": str(path)
         }
         persons_collection.insert_one(doc)
-        return {"status": "ok", "person_id": person_id, "folder_path": str(person_folder)}
+        return {"status": "created", "name": name}
 
     @staticmethod
-    def list_persons(user_id: str) -> list[dict]:
-        docs = list(persons_collection.find({"user_id": user_id}))
-        # normalize output
-        return [
-            {
-                "person_id": d.get("person_id"),
-                "name": d.get("name"),
-                "folder_path": d.get("folder_path"),
-                "photos_count": d.get("photos_count", 0)
-            } for d in docs
-        ]
+    def list_persons(user_id: str):
+        return list(persons_collection.find(
+            {"user_id": user_id},
+            {"_id": 0}
+        ))
+
+    @staticmethod
+    def delete_person_folder(user_id: str, person_name: str):
+        person = persons_collection.find_one({
+            "user_id": user_id,
+            "name": person_name
+        })
+
+        if not person:
+            return {"status": "not_found"}
+
+        folder_path = person.get("path") or person.get("folder_path")
+        if not folder_path:
+            persons_collection.delete_one({"_id": person["_id"]})
+            return {"status": "no_folder", "person": person_name}
+
+        folder = Path(folder_path)
+        if folder.exists():
+            shutil.rmtree(folder)
+
+        persons_collection.delete_one({"_id": person["_id"]})
+
+        return {
+            "status": "deleted",
+            "person": person_name
+        }

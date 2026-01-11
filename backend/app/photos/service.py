@@ -2,16 +2,28 @@ import uuid
 from pathlib import Path
 import shutil
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from typing_extensions import TypedDict
 import mimetypes
+from datetime import datetime
+import os
+import hashlib
 
 from fastapi import UploadFile
 
+from app.config import STORAGE_ROOT
 from app.db.mongodb import photos_collection
+from app.db.mongodb import persons_collection
 
-UPLOAD_DIR = Path("app/storage/user_uploads")
+UPLOAD_DIR = STORAGE_ROOT/"user_uploads"
 
+
+def _md5_file(path: str) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 class PhotoSaveResult(TypedDict):
     photo_id: str
@@ -74,6 +86,20 @@ class PhotoService:
             "metadata": metadata
         })
 
+        file_md5 = _md5_file(str(save_path))
+        photos_collection.update_one(
+            {"user_id": user_id, "md5": file_md5},
+            {
+                "$setOnInsert": {"photo_id": file_id},
+                "$set": {
+                    "filename": filename,
+                    "path": str(save_path),
+                    "metadata": metadata,
+                    "md5": file_md5,
+                }
+            },
+            upsert=True
+        )
         return {
             "photo_id": file_id,
             "filename": filename,
@@ -88,13 +114,111 @@ class PhotoService:
         return photos_collection.find_one({"photo_id": photo_id, "user_id": user_id})
 
     @staticmethod
-    def search_person(user_id: str, person_name: str) -> List[Dict[str, str]]:
-        """
-        Search photos for a person name (case-insensitive regex on `persons_detected`).
-        Returns list of dicts with `photo_id` and `filename`.
-        """
-        photos = list(photos_collection.find({
+    def search_person(user_id: str, person_name: str) -> List[Dict[str, Any]]:
+        q = {
             "user_id": user_id,
-            "persons_detected": {"$regex": person_name, "$options": "i"}
-        }))
-        return [{"photo_id": p["photo_id"], "filename": p["filename"]} for p in photos]
+            "$or": [
+                {"persons_detected": {"$regex": person_name, "$options": "i"}},
+                {"faces.person_name": {"$regex": person_name, "$options": "i"}}
+            ]
+        }
+        photos = list(photos_collection.find(q, {"_id": 0, "photo_id": 1, "filename": 1, "path": 1, "metadata": 1}))
+        def normalize(p):
+            md = p.get("metadata") or {}
+            return {
+                "photo_id": p.get("photo_id"),
+                "filename": p.get("filename"),
+                "path": p.get("path"),
+                "date_taken": md.get("date_taken"),
+                "location": md.get("location"),
+            }
+        return [normalize(p) for p in photos]
+
+    @staticmethod
+    def delete_photo(user_id: str, photo_id: str) -> dict:
+        doc = photos_collection.find_one({"user_id": user_id, "photo_id": photo_id})
+        if not doc:
+            return {"status": "not_found"}
+        path = doc.get("path")
+        if path:
+            p = Path(path)
+            try:
+                if p.exists():
+                    p.unlink()
+            except Exception:
+                pass
+        photos_collection.delete_one({"user_id": user_id, "photo_id": photo_id})
+        return {"status": "ok"}
+    
+    @staticmethod
+    def update_photo_path(user_id: str, old_path: str, new_path: str, person_name: Optional[str] = None) -> None:
+        from pathlib import Path
+        file_md5 = _md5_file(new_path)
+        update = {"$set": {"path": new_path, "md5": file_md5}}
+        if person_name:
+            update["$addToSet"] = {"persons_detected": person_name}
+        photos_collection.update_one({"user_id": user_id, "path": old_path}, update)
+        photos_collection.update_one(
+            {"user_id": user_id, "md5": file_md5},
+            {"$setOnInsert": {"photo_id": str(uuid.uuid4())}, "$set": {"path": new_path}},
+            upsert=True
+        )
+
+    @staticmethod
+    def insert_local_photo(user_id: str, src_path: str, dest_path: str, note: Optional[str] = None) -> dict:
+        file_id = str(uuid.uuid4())
+        md = {
+            "date_taken": str(datetime.now().date()),
+            "location": "Unknown",
+            "note": note
+        }
+        doc = {
+            "photo_id": file_id,
+            "user_id": user_id,
+            "filename": Path(dest_path).name,
+            "path": dest_path,
+            "metadata": md
+        }
+        photos_collection.insert_one(doc)
+        return {"status": "ok", "photo_id": file_id}
+    
+    @staticmethod
+    def reassign_photo(user_id: str, photo_id: str, person_name: str) -> dict:
+        doc = photos_collection.find_one({"user_id": user_id, "photo_id": photo_id})
+        if not doc or not doc.get("path"): return {"status": "not_found"}
+        src = Path(doc["path"])
+        person = persons_collection.find_one({"user_id": user_id, "name": person_name})
+        base = STORAGE_ROOT / "persons" / user_id / person_name
+        base.mkdir(parents=True, exist_ok=True)
+        dest = base / src.name
+        try:
+            os.replace(src, dest)
+        except Exception:
+            return {"status": "move_failed"}
+        photos_collection.update_one(
+            {"user_id": user_id, "photo_id": photo_id},
+            {
+                "$set": {"path": str(dest)},
+                "$addToSet": {"persons_detected": person_name}
+            }
+        )
+        persons_collection.update_one(
+            {"user_id": user_id, "name": person_name},
+            {"$setOnInsert": {"path": str(base)}, "$inc": {"photos_count": 1}},
+            upsert=True
+        )
+        return {"status": "ok", "path": str(dest)}
+    
+    @staticmethod
+    def delete_batch(user_id: str, photo_ids: list[str]) -> dict:
+        deleted = 0
+        for pid in photo_ids:
+            doc = photos_collection.find_one({"user_id": user_id, "photo_id": pid})
+            if doc:
+                p = Path(doc.get("path") or "")
+                try:
+                    if p.exists(): p.unlink()
+                except Exception: pass
+                photos_collection.delete_one({"user_id": user_id, "photo_id": pid})
+                deleted += 1
+        return {"status": "ok", "deleted": deleted}

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from app.auth.service import AuthService
 from app.persons.service import PersonService
+from app.config import STORAGE_ROOT
 
 router = APIRouter()
 
@@ -31,3 +32,7 @@ def create_person(data: CreatePerson):
     Façade route to create person folder + db record (calls PersonService.create_person).
     """
     return PersonService.create_person(data.user_id, data.name)
+
+@router.get("/storage-root")
+def storage_root():
+    return {"path": str(STORAGE_ROOT.resolve())}
