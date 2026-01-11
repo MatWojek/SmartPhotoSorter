@@ -70,6 +70,7 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
       final loginRes = await ApiService.login(email, pass);
       if (loginRes.containsKey('access_token')) {
         final token = loginRes['access_token'] as String;
+        ApiService.setToken(token);
         widget.onAuthChanged(true, userId: _userId, token: token);
         _showMsg('Registered and logged in');
       } else {
@@ -144,17 +145,23 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
               children: [
                 const Text('Create account', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                TextField(controller: _firstNameCtrl, decoration: const InputDecoration(labelText: 'First Name')),
+                TextField(controller: _firstNameCtrl, decoration: const InputDecoration(labelText: 'First Name'), textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
-                TextField(controller: _lastNameCtrl, decoration: const InputDecoration(labelText: 'Last Name')),
+                TextField(controller: _lastNameCtrl, decoration: const InputDecoration(labelText: 'Last Name'), textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
-                TextField(controller: _usernameCtrl, decoration: const InputDecoration(labelText: 'Username')),
+                TextField(controller: _usernameCtrl, decoration: const InputDecoration(labelText: 'Username'), textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
-                TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+                TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email'), textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
-                TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+                TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true, textInputAction: TextInputAction.next),
                 const SizedBox(height: 12),
-                TextField(controller: _pass2Ctrl, decoration: const InputDecoration(labelText: 'Confirm password'), obscureText: true),
+                TextField(
+                  controller: _pass2Ctrl,
+                  decoration: const InputDecoration(labelText: 'Confirm password'),
+                  obscureText: true,
+                  onSubmitted: (_) => _register(),
+                  textInputAction: TextInputAction.done,
+                ),
                 const SizedBox(height: 16),
                 
                 SizedBox(

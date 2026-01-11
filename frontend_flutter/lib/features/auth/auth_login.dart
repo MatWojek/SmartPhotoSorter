@@ -50,8 +50,10 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
       final res = await ApiService.login(loginValue, pass);
       if (res.containsKey('access_token')) {
         final token = res['access_token'] as String;
+        final userId = res['user_id'] as String?;
+        ApiService.setToken(token);
         _showMsg('Logged in');
-        widget.onAuthChanged(true, token: token);
+        widget.onAuthChanged(true, userId: userId, token: token);
       } else {
         _showMsg(res.toString());
       }
@@ -83,9 +85,20 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
               children: [
                 const Text('Sign in', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
-                TextField(controller: _loginCtrl, decoration: const InputDecoration(labelText: 'Email or Username')),
+                TextField(
+                  controller: _loginCtrl,
+                  decoration: const InputDecoration(labelText: 'Email or Username'),
+                  onSubmitted: (_) => _login(),
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
+                TextField(
+                  controller: _passCtrl,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                  onSubmitted: (_) => _login(),
+                  textInputAction: TextInputAction.done,
+                ),
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,

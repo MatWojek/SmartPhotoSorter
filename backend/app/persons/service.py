@@ -8,9 +8,14 @@ BASE_STORAGE = STORAGE_ROOT/"persons"
 
 
 class PersonService:
+    """Operations on person collections for a given user.
+
+    Handles creating, listing and deleting person folders and records.
+    """
 
     @staticmethod
     def create_person(user_id: str, name: str):
+        """Create a person collection folder and DB record for `user_id`."""
         path = BASE_STORAGE / user_id / name
         path.mkdir(parents=True, exist_ok=True)
 
@@ -24,6 +29,7 @@ class PersonService:
 
     @staticmethod
     def list_persons(user_id: str):
+        """List all person records belonging to `user_id`."""
         return list(persons_collection.find(
             {"user_id": user_id},
             {"_id": 0}
@@ -31,6 +37,7 @@ class PersonService:
 
     @staticmethod
     def delete_person_folder(user_id: str, person_name: str):
+        """Delete a person's folder on disk and remove the DB record."""
         person = persons_collection.find_one({
             "user_id": user_id,
             "name": person_name

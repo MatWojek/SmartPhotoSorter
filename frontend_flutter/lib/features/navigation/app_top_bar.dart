@@ -4,6 +4,7 @@ import '../auth/auth_registration_page.dart';
 import '../../core/theme_controller.dart';
 import 'person_search.dart';
 import 'filter_bottom_sheet.dart';
+import '../../services/api_service.dart';
 
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final bool loggedIn;
@@ -98,10 +99,36 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
             child: const Text('Register'),
           ),
         ] else ...[
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: () => onAuthChanged(false),
+          PopupMenuButton<String>(
+            tooltip: 'Account',
+            icon: const Icon(Icons.account_circle),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'logout', child: Text('Logout')),
+              PopupMenuItem(value: 'delete', child: Text('Delete account')),
+            ],
+            onSelected: (v) async {
+              if (v == 'logout') {
+                onAuthChanged(false);
+              } else if (v == 'delete') {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('Delete account?'),
+                    content: const Text('This will permanently delete your account, collections and all photos.'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                    ],
+                  ),
+                );
+                if (confirmed == true && userId != null && userId!.isNotEmpty) {
+                  final ok = await ApiService.deleteAccount(userId!);
+                  if (ok) {
+                    onAuthChanged(false);
+                  }
+                }
+              }
+            },
           ),
         ],
       ],

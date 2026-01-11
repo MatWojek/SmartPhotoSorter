@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
 import 'progress_overlay.dart';
@@ -65,13 +66,21 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
     if (sortPhotos) {
       final res = await showDialog<Map<String, String>>(
         context: context,
-        builder: (_) => const TrainingFoldersDialog(),
+        builder: (_) => TrainingFoldersDialog(currentUserId: widget.currentUserId),
       );
       if (res == null || res.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No training folders.')));
         return;
       }
       trainingFolders = res;
+      // Save for reuse
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final key = (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
+          ? 'train_data_${widget.currentUserId}'
+          : 'train_data_local';
+        await prefs.setString(key, jsonEncode(trainingFolders));
+      } catch (_) {}
     }
 
     // Mode "only dupliates": call sort-local without training folders
@@ -91,6 +100,11 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       context: context,
       builder: (_) => ProgressOverlay(wsUrl: wsUrl, sseUri: sseUri),
     );
+    // Save last sort date for this folder
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_sort_date_${folder}', DateTime.now().toIso8601String());
+    } catch (_) {}
     widget.onAfterTask?.call();
   }
 
@@ -124,9 +138,19 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
     if (sortPhotos) {
       final res = await showDialog<Map<String, String>>(
         context: context,
-        builder: (_) => const TrainingFoldersDialog(),
+        builder: (_) => TrainingFoldersDialog(currentUserId: widget.currentUserId),
       );
       trainingFolders = res;
+      // Save for reuse
+      if (res != null && res.isNotEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final key = (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
+            ? 'train_data_${widget.currentUserId}'
+            : 'train_data_local';
+          await prefs.setString(key, jsonEncode(res));
+        } catch (_) {}
+      }
     }
 
     final resp = await ApiService.startIndexDb(
@@ -144,6 +168,11 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       context: context,
       builder: (_) => ProgressOverlay(wsUrl: wsUrl, sseUri: sseUri),
     );
+    // Save last sort date for this folder
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_sort_date_${folder}', DateTime.now().toIso8601String());
+    } catch (_) {}
     widget.onAfterTask?.call();
   }
 

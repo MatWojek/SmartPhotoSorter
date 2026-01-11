@@ -52,7 +52,7 @@ def detect_faces(detector, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
         faces.append((x, y, w, h))
     return faces
 
-def face_embed(img: np.ndarray, box: Tuple[int, int, int, int], size: int = 128) -> np.ndarray:
+def face_embed(img: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
     x, y, w, h = box
     top, right, bottom, left = y, x + w, y + h, x
 
@@ -64,7 +64,14 @@ def face_embed(img: np.ndarray, box: Tuple[int, int, int, int], size: int = 128)
     if not encodings:
         raise ValueError("No face encoding")
 
-    return encodings[0]  # 128D float vector
+    emb = encodings[0].astype(np.float64)
+    norm = np.linalg.norm(emb)
+
+    if norm == 0:
+        raise ValueError("Zero norm embedding")
+
+    return emb / norm
+
 
 def _copy_on_error(src_path: str, user_id: Optional[str], reason: str) -> Optional[str]:
     try:
@@ -77,6 +84,13 @@ def _copy_on_error(src_path: str, user_id: Optional[str], reason: str) -> Option
         return None
 
 class FaceSorter:
+    """Face recognition sorter and trainer.
+
+    Maintains in-memory embeddings per person, supports training from folders
+    and sorting an unsorted folder into person-specific subfolders. Uses MD5
+    to filter exact duplicates and a simple distance heuristic for visual dups.
+    """
+
     def __init__(self) -> None:
         self.person_embeds: Dict[str, List[np.ndarray]] = {}
         self.person_means: Dict[str, np.ndarray] = {}
@@ -84,6 +98,7 @@ class FaceSorter:
         self.image_embeddings: List[np.ndarray] = []
 
     def load_from_db(self, user_id: str) -> None:
+        """Load existing embeddings for a `user_id` from the DB into memory."""
         from app.db.mongodb import persons_collection
         docs = persons_collection.find({"user_id": user_id}, {"_id": 0, "name": 1, "embeddings": 1, "mean_embedding": 1})
         for d in docs:
@@ -122,6 +137,7 @@ class FaceSorter:
         )
 
     def ensure_trained_for_user(self, user_id: str, progress: Optional[ProgressCb] = None) -> None:
+        """Ensure all person folders for `user_id` are trained, skipping already-trained files."""
         from app.db.mongodb import persons_collection
         persons = list(persons_collection.find({"user_id": user_id}, {"_id": 0, "name": 1, "path": 1, "trained_files": 1}))
         for p in persons:
@@ -140,7 +156,11 @@ class FaceSorter:
             for path in imgs:
                 file_md5 = md5_file(path)
                 if file_md5 in trained_md5s:
-                    if progress: progress({"status":"skip","photo":path,"message":"Already trained"})
+                    if progress: progress({
+                        "status":"skip",
+                        "photo":path,
+                        "message":"Already trained"
+                    })
                     continue
                 img = read_image(path)
                 if img is None:
@@ -174,13 +194,55 @@ class FaceSorter:
                 self.person_embeds[name] = prev + new_embeds
                 self.person_means[name] = np.mean(np.stack(self.person_embeds[name]), axis=0)
                 self._persist_person(user_id, name, new_embeds, new_paths, folder)
- 
+    
+    def _normalize(self, emb: np.ndarray) -> np.ndarray:
+        norm = np.linalg.norm(emb)
+        if norm == 0:
+            return emb
+        return emb / norm
+
+    def _select_best_face(
+        self,
+        img: np.ndarray,
+        faces: List[Tuple[int, int, int, int]],
+        person_name: Optional[str] = None
+    ) -> Tuple[int, int, int, int]:
+        """
+        If the person exists, select the face closest to the mean embedding. 
+        If not, select the largest face.
+        """
+        if person_name and person_name in self.person_means:
+            mean = self.person_means[person_name]
+            best_face = None
+            best_dist = float("inf")
+
+            for box in faces:
+                try:
+                    emb = face_embed(img, box)
+                    dist = np.linalg.norm(mean - emb)
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_face = box
+                except Exception:
+                    continue
+
+            if best_face:
+                return best_face
+
+        # fallback → the biggest face
+        return max(faces, key=lambda b: b[2] * b[3])
+
+
     def train_from_folders(
             self, 
             person_folders: Dict[str, str], 
             progress: Optional[ProgressCb] = None, 
             user_id: Optional[str] = None
         ) -> None:
+        """Train embeddings from a mapping {person: folder}.
+
+        Optionally records training in DB when `user_id` is provided.
+        """
         total = sum(len(list_images(folder)) for folder in person_folders.values())
         done = 0
         for person, folder in person_folders.items():
@@ -226,24 +288,100 @@ class FaceSorter:
                 if user_id:
                     self._persist_person(user_id, person, embeds, processed_paths, folder)
 
-    def train_single(self, user_id: str, person_name: str, photo_path: str, progress: Optional[ProgressCb] = None) -> None:
+    def train_single(
+        self,
+        user_id: str,
+        person_name: str,
+        photo_path: str,
+        progress: Optional[ProgressCb] = None
+    ) -> None:
         img = read_image(photo_path)
         if img is None:
             return
+
+        # Compute MD5 for exact duplicate detection
+        file_md5 = md5_file(photo_path)
+
+        # Detect all faces in the image
         faces = detect_faces(None, img)
         if not faces:
             return
-        emb = face_embed(img, faces[0])
+
+        embeddings: list[np.ndarray] = []
+
+        for box in faces:
+            try:
+                emb = face_embed(img, box)
+            except Exception:
+                continue
+
+            # Normalize embedding
+            norm = np.linalg.norm(emb)
+            if norm == 0:
+                continue
+            emb = emb / norm
+
+            # Cross-run visual deduplication (DB)
+            if self._is_visual_duplicate(user_id, emb):
+                continue
+
+            embeddings.append(emb)
+
+        if not embeddings:
+            return
+
+        # Store embeddings in memory
         prev = self.person_embeds.get(person_name, [])
-        self.person_embeds[person_name] = prev + [emb]
-        self.person_means[person_name] = np.mean(np.stack(self.person_embeds[person_name]), axis=0)
-        # persist embedding in DB for the person
+        prev.extend(embeddings)
+        self.person_embeds[person_name] = prev
+
+        # Update mean embedding
+        mean_emb = np.mean(np.stack(prev), axis=0)
+        mean_emb = mean_emb / np.linalg.norm(mean_emb)
+        self.person_means[person_name] = mean_emb
+
+        # Persist to MongoDB
         from app.db.mongodb import persons_collection
+
         persons_collection.update_one(
             {"user_id": user_id, "name": person_name},
-            {"$push": {"embeddings": emb.tolist()}, "$set": {"mean_embedding": self.person_means[person_name].tolist()}},
+            {
+                "$push": {
+                    "embeddings": {
+                        "$each": [e.tolist() for e in embeddings]
+                    }
+                },
+                "$set": {
+                    "mean_embedding": mean_emb.tolist()
+                },
+                "$addToSet": {
+                    "trained_files": {
+                        "md5": file_md5,
+                        "filename": os.path.basename(photo_path)
+                    }
+                }
+            },
             upsert=True
         )
+
+
+
+    def _is_visual_duplicate(self, user_id: str, emb: np.ndarray, threshold: float = 0.15) -> bool:
+        # Check if a visually similar image already exists in the database
+        from app.db.mongodb import photos_collection
+
+        docs = photos_collection.find(
+            {"user_id": user_id, "image_embedding": {"$exists": True}},
+            {"image_embedding": 1}
+        )
+
+        for d in docs:
+            other = np.array(d["image_embedding"], dtype=np.float64)
+            dist = np.linalg.norm(other - emb)
+            if dist < threshold:
+                return True
+
+        return False
 
     def _match_person(self, emb: np.ndarray, threshold: float = 0.35) -> Optional[str]:
         best_name = None
@@ -279,7 +417,7 @@ class FaceSorter:
         os.makedirs(unknown_folder, exist_ok=True)
 
         for i, path in enumerate(paths, start=1):
-            # bit duplicates
+            # Exact duplicate detection using MD5 hash
             file_md5 = md5_file(path)
             if file_md5 in self.duplicate_hashes:
                 os.remove(path)
@@ -290,71 +428,87 @@ class FaceSorter:
                         "current": i,
                         "total": total,
                         "photo": path,
-                        "message": "Exact duplicate removed"
+                        "message": "Exact duplicate (MD5)"
                     })
                 continue
             self.duplicate_hashes.add(file_md5)
 
+            # Load image
             img = read_image(path)
             if img is None:
-                    copied = _copy_on_error(path, user_id, "unreadable")
-                    if progress:
-                        progress({
-                            "status": "error_copy",
-                            "photo": path,
-                            "copied_to": copied,
-                            "message": "Unreadable, copied to storage root"
-                        })
-                    if user_id and copied:
-                        from app.photos.service import PhotoService
-                        PhotoService.insert_local_photo(user_id, path, copied, note="error_unreadable")
-                    skipped += 1
-                    continue
+                skipped += 1
+                continue
 
             faces = detect_faces(None, img)
             if not faces:
                 skipped += 1
                 continue
 
+            # Best face + embending
+            box = self._select_best_face(img, faces)
+
             try:
-                emb = face_embed(img, faces[0])
+                emb = face_embed(img, box)
+                emb = self._normalize(emb)
             except Exception:
                 skipped += 1
                 continue
 
-            # visual duplicates
-            is_duplicate = False
+            # Ram visual dedup
+            is_dup = False
             for known_emb in self.image_embeddings:
-                dist = np.linalg.norm(known_emb - emb)
-                if dist < 0.40:
+                if np.linalg.norm(known_emb - emb) < 0.15:
                     os.remove(path)
                     removed_dups += 1
-                    is_duplicate = True
+                    is_dup = True
                     if progress:
                         progress({
                             "status": "duplicate",
                             "current": i,
                             "total": total,
                             "photo": path,
-                            "message": "Visual duplicate removed"
+                            "message": "Visual duplicate (RAM)"
                         })
                     break
 
-            if is_duplicate:
+            if is_dup:
+                continue
+
+            # DB visual dedup (cross-run)
+            if user_id and self._is_visual_duplicate(user_id, emb):
+                os.remove(path)
+                removed_dups += 1
+                if progress:
+                    progress({
+                        "status": "duplicate",
+                        "current": i,
+                        "total": total,
+                        "photo": path,
+                        "message": "Visual duplicate (DB)"
+                    })
                 continue
 
             self.image_embeddings.append(emb)
 
+            # Match person
             match = self._match_person(emb)
+
             dest_dir = os.path.join(output_base, match) if match else unknown_folder
             os.makedirs(dest_dir, exist_ok=True)
 
             dest_path = os.path.join(dest_dir, os.path.basename(path))
             os.replace(path, dest_path)
 
+            # DB persistance
             if user_id:
-                from app.photos.service import PhotoService
-                PhotoService.update_photo_path(user_id, path, dest_path, match)
+                from app.db.mongodb import photos_collection
+                photos_collection.insert_one({
+                    "user_id": user_id,
+                    "path": dest_path,
+                    "md5": file_md5,
+                    "image_embedding": emb.tolist(),
+                    "person": match
+                })
 
             if match:
                 moved_known += 1

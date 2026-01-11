@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../models/person.dart';
 import 'widgets/folder_drop_zone.dart';
@@ -23,6 +24,7 @@ class _HomePageState extends State<HomePage> {
   bool loggedIn = false;
   String? selectedFolder;
   String? currentUserId;
+  DateTime? lastSortDate;
 
   final Set<String> selectedPhotos = {};
   bool selectionMode = false; 
@@ -59,13 +61,26 @@ class _HomePageState extends State<HomePage> {
     await prefs.setString('current_user_id', id);
   }
 
+  Future<void> _loadLastSortDate() async {
+    if (selectedFolder == null || selectedFolder!.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final s = prefs.getString('last_sort_date_${selectedFolder!}');
+    if (s != null && s.isNotEmpty) {
+      setState(() => lastSortDate = DateTime.tryParse(s));
+    }
+  }
+
   Future<void> _searchByPerson(String name) async {
     if (currentUserId == null || currentUserId!.isEmpty) return;
     final res = await ApiService.searchPhotosByPerson(currentUserId!, name);
-    // Deduplicate by photo_id to avoid doubles when data reindexed
-    final Map<String, Map<String, dynamic>> unique = {
-      for (final p in res) (p['photo_id'] as String): p,
-    };
+    // Deduplicate by path if available, else by photo_id
+    final Map<String, Map<String, dynamic>> unique = {};
+    for (final p in res) {
+      final String? path = p['path'] as String?;
+      final String id = (p['photo_id'] as String?) ?? ''; 
+      final key = (path != null && path.isNotEmpty) ? 'path:$path' : 'id:$id';
+      unique[key] = p;
+    }
     setState(() {
       activeFilterPersons = [name];
       photoResults = unique.values.toList();
@@ -85,7 +100,10 @@ class _HomePageState extends State<HomePage> {
     for (final name in persons) {
       final res = await ApiService.searchPhotosByPerson(currentUserId!, name);
       for (final p in res) {
-        unique[p["photo_id"] as String] = p;
+        final String? path = p['path'] as String?;
+        final String id = (p['photo_id'] as String?) ?? '';
+        final key = (path != null && path.isNotEmpty) ? 'path:$path' : 'id:$id';
+        unique[key] = p;
       }
     }
     setState(() {
@@ -149,6 +167,65 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _moveSelectedLocal(String personName) async {
+    if (selectedFolder == null || selectedFolder!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a base folder first.')));
+      return;
+    }
+    final baseDir = Directory(selectedFolder!);
+    final outputBase = Directory('${baseDir.path}${Platform.pathSeparator}sorted');
+    final destDir = Directory('${outputBase.path}${Platform.pathSeparator}$personName');
+    if (!outputBase.existsSync()) outputBase.createSync(recursive: true);
+    if (!destDir.existsSync()) destDir.createSync(recursive: true);
+
+    // also copy to manual train dir for future learning
+    Directory manualTrainBase() {
+      final home = Platform.environment['HOME'] ?? Directory.current.path;
+      final userPart = (currentUserId != null && currentUserId!.isNotEmpty) ? currentUserId! : 'local';
+      final dir = Directory('$home${Platform.pathSeparator}.smartphotosorter${Platform.pathSeparator}train_manual${Platform.pathSeparator}$userPart${Platform.pathSeparator}$personName');
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      return dir;
+    }
+    final manualDir = manualTrainBase();
+
+    for (final id in selectedPhotos.toList()) {
+      final item = photoResults.cast<Map<String, dynamic>>().firstWhere(
+        (e) => e['photo_id'] == id,
+        orElse: () => const {},
+      );
+      final path = (item['path'] as String?) ?? '';
+      if (path.isEmpty) continue;
+      final srcFile = File(path);
+      if (!srcFile.existsSync()) continue;
+      final fileName = path.split(RegExp(r'[\\/]')).last;
+      final destPath = '${destDir.path}${Platform.pathSeparator}$fileName';
+      try {
+        await srcFile.rename(destPath);
+      } catch (_) {
+        try {
+          await srcFile.copy(destPath);
+          await srcFile.delete();
+        } catch (_) {}
+      }
+      // copy to manual train dir (keep a copy)
+      try {
+        final trainCopy = File('${manualDir.path}${Platform.pathSeparator}$fileName');
+        if (!trainCopy.existsSync()) {
+          await File(destPath).copy(trainCopy.path);
+        }
+      } catch (_) {}
+      // update UI state: remove moved photo
+      setState(() {
+        photoResults.removeWhere((e) => e['photo_id'] == id);
+        selectedPhotos.remove(id);
+      });
+    }
+    setState(() {
+      selectionMode = selectedPhotos.isNotEmpty;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Moved to $personName')));
+  }
+
   Future<void> _reassignSelected(String personName) async {
     if (currentUserId == null) return;
     for (final id in selectedPhotos) {
@@ -175,7 +252,13 @@ class _HomePageState extends State<HomePage> {
               loggedIn = isLoggedIn;
               if (userId != null && userId.isNotEmpty) currentUserId = userId;
             });
-            await _saveUserId(userId);
+            if (isLoggedIn) {
+              await _saveUserId(userId);
+            } else {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove('current_user_id');
+              currentUserId = null;
+            }
             if (isLoggedIn) {
               await _fetchPersons(); // only after login
             } else {
@@ -238,7 +321,16 @@ class _HomePageState extends State<HomePage> {
             loggedIn = isLoggedIn;
             if (userId != null && userId.isNotEmpty) currentUserId = userId;
           });
-          await _saveUserId(userId);
+          if (isLoggedIn) {
+            await _saveUserId(userId);
+          } else {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.remove('current_user_id');
+            currentUserId = null;
+            // clear token on logout
+            ApiService.setToken(null);
+            ApiService.setToken(null);
+          }
           if (isLoggedIn) {
             await _fetchPersons();
           } else {
@@ -271,7 +363,14 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Selected folder: $selectedFolder', style: Theme.of(context).textTheme.bodyMedium),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Selected folder: $selectedFolder', style: Theme.of(context).textTheme.bodyMedium),
+                    if (lastSortDate != null)
+                      Text('Sorted at: ${lastSortDate!.toLocal()}', style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
               ),
             ),
           SortOptionsPanel(
@@ -299,6 +398,37 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 8),
                 TextButton.icon(onPressed: _copySelectedPaths, icon: const Icon(Icons.content_copy), label: const Text('Copy paths')),
                 const SizedBox(width: 8),
+                // Local move to person folder
+                PopupMenuButton<String>(
+                  tooltip: 'Move to person (local)'
+                  , itemBuilder: (_) {
+                    // offer persons list if available, else allow manual input
+                    final items = persons.map((p) => PopupMenuItem(value: p.name, child: Text(p.name))).toList();
+                    items.add(const PopupMenuItem(value: '__manual__', child: Text('Other…')));
+                    return items;
+                  },
+                  onSelected: (name) async {
+                    if (name == '__manual__') {
+                      final ctrl = TextEditingController();
+                      final v = await showDialog<String>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Person name'),
+                          content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Name')),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                            FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('Move')),
+                          ],
+                        ),
+                      );
+                      if (v != null && v.isNotEmpty) await _moveSelectedLocal(v);
+                    } else {
+                      await _moveSelectedLocal(name);
+                    }
+                  },
+                  child: TextButton.icon(onPressed: null, icon: const Icon(Icons.drive_file_move), label: const Text('Move')),
+                ),
+                const SizedBox(width: 8),
                 PopupMenuButton<String>(
                   tooltip: 'Reassign to person',
                   itemBuilder: (_) => persons.map((p) => PopupMenuItem(value: p.name, child: Text(p.name))).toList(),
@@ -315,12 +445,18 @@ class _HomePageState extends State<HomePage> {
               IconButton(
                 tooltip: 'Grid view',
                 icon: const Icon(Icons.grid_view),
-                onPressed: () => setState(() => listMode = false),
+                onPressed: () async {
+                  setState(() => listMode = false);
+                  await _loadLastSortDate();
+                },
               ),
               IconButton(
                 tooltip: 'List view',
                 icon: const Icon(Icons.view_list),
-                onPressed: () => setState(() => listMode = true),
+                onPressed: () async {
+                  setState(() => listMode = true);
+                  await _loadLastSortDate();
+                },
               ),
             ],
           ),

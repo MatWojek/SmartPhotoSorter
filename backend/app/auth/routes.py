@@ -39,3 +39,10 @@ def login(data: LoginUser) -> dict[str, str]:
     - 400: if credentials are invalid
     """
     return AuthService.login(data.email, data.password)
+
+@router.delete("/delete/{user_id}")
+def delete_account(user_id: str) -> dict[str, str]:
+    """
+    Permanently delete the account and all associated data for the given user_id.
+    """
+    return AuthService.delete_account(user_id)

@@ -3,6 +3,19 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   static const _base = 'http://127.0.0.1:8000';
+  static String? _token;
+
+  /// Set or clear the JWT token used for authenticated calls.
+  static void setToken(String? token) { _token = token; }
+
+  static Map<String, String> _headers([Map<String, String>? extra]) {
+    final base = <String, String>{'Content-Type': 'application/json'};
+    if (_token != null && _token!.isNotEmpty) {
+      base['Authorization'] = 'Bearer $_token';
+    }
+    if (extra != null) base.addAll(extra);
+    return base;
+  }
 
   static String progressWsUrl(String taskId) => 'ws://127.0.0.1:8000/ml/progress/$taskId';
   static Uri progressSseUri(String taskId) => Uri.parse('http://127.0.0.1:8000/ml/progress-sse/$taskId');
@@ -16,7 +29,7 @@ class ApiService {
   }) async {
     final res = await http.post(
       Uri.parse('$_base/auth/register'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({
         'first_name': firstName,
         'last_name': lastName,
@@ -35,23 +48,24 @@ class ApiService {
   static Future<Map<String, dynamic>> login(String email, String password) async {
     final res = await http.post(
       Uri.parse('$_base/auth/login'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({'email': email, 'password': password}),
     );
-    return jsonDecode(res.body) as Map<String, dynamic>;
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return body;
   }
 
   static Future<Map<String, dynamic>> createPerson(String userId, String name) async {
     final res = await http.post(
       Uri.parse('$_base/services/person'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({'user_id': userId, 'name': name}),
     );
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   static Future<List<dynamic>> listPersons(String userId) async {
-    final res = await http.get(Uri.parse('$_base/persons/list/$userId'));
+    final res = await http.get(Uri.parse('$_base/persons/list/$userId'), headers: _headers({'Content-Type': 'application/json'}));
     return jsonDecode(res.body) as List<dynamic>;
   }
 
@@ -63,7 +77,7 @@ class ApiService {
   }) async {
     final res = await http.post(
       Uri.parse('$_base/ml/sort-local'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({
         'training_folders': trainingFolders,
         'unsorted_folder': unsortedFolder,
@@ -85,7 +99,7 @@ class ApiService {
   }) async {
     final res = await http.post(
       Uri.parse('$_base/ml/index-db'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({
         'user_id': userId,
         'folder': folder,
@@ -103,7 +117,7 @@ class ApiService {
     final q = personName.trim();
     if (q.isEmpty) return [];
     try {
-      final res = await http.get(Uri.parse('$_base/photos/search/$userId/$q'));
+      final res = await http.get(Uri.parse('$_base/photos/search/$userId/$q'), headers: _headers({'Content-Type': 'application/json'}));
       if (res.statusCode >= 400) return [];
       final body = jsonDecode(res.body);
       return body is List ? body.cast<Map<String, dynamic>>() : [];
@@ -111,19 +125,19 @@ class ApiService {
   }
 
   static Future<bool> deletePhoto(String userId, String photoId) async {
-    final res = await http.delete(Uri.parse('$_base/photos/delete/$userId/$photoId'));
+    final res = await http.delete(Uri.parse('$_base/photos/delete/$userId/$photoId'), headers: _headers({'Content-Type': 'application/json'}));
     return res.statusCode < 400;
   }
 
   static Future<bool> deletePersonFolder(String userId, String personName) async {
-    final res = await http.delete(Uri.parse('$_base/persons/delete-folder/$userId/$personName'));
+    final res = await http.delete(Uri.parse('$_base/persons/delete-folder/$userId/$personName'), headers: _headers({'Content-Type': 'application/json'}));
     return res.statusCode < 400;
   }
 
   static Future<bool> reassignPhoto(String userId, String photoId, String personName) async {
     final res = await http.post(
       Uri.parse('$_base/photos/reassign/$userId/$photoId'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({'person_name': personName}),
     );
     return res.statusCode < 400;
@@ -132,12 +146,17 @@ class ApiService {
   static Future<Map<String, dynamic>> deleteBatch(String userId, List<String> photoIds) async {
     final res = await http.post(
       Uri.parse('$_base/photos/delete-batch/$userId'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: jsonEncode({'photo_ids': photoIds}),
     );
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   static String photoUrl(String userId, String photoId) => '$_base/photos/get/$userId/$photoId';
+
+  static Future<bool> deleteAccount(String userId) async {
+    final res = await http.delete(Uri.parse('$_base/auth/delete/$userId'), headers: _headers({'Content-Type': 'application/json'}));
+    return res.statusCode < 400;
+  }
 } 
   

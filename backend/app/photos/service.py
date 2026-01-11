@@ -12,8 +12,10 @@ import hashlib
 from fastapi import UploadFile
 
 from app.config import STORAGE_ROOT
-from app.db.mongodb import photos_collection
-from app.db.mongodb import persons_collection
+"""
+Photo service operations. Collections are imported inside methods to allow
+tests to monkeypatch `app.db.mongodb` without stale references.
+"""
 
 UPLOAD_DIR = STORAGE_ROOT/"user_uploads"
 
@@ -41,13 +43,22 @@ class PhotoService:
 
     @staticmethod
     def save_photo(user_id: str, file: UploadFile) -> PhotoSaveResult:
-        """
-        Save uploaded file to disk and insert metadata into MongoDB.
+        """Save an uploaded photo for a specific user.
 
-        :param user_id: id of the uploading user
-        :param file: FastAPI UploadFile
-        :return: dict with created `photo_id` and optional `filename` and `path`
+        Writes the file to `STORAGE_ROOT/user_uploads/{user_id}/original`,
+        computes its MD5, and ensures no duplicates exist for the same user
+        based on `(user_id, md5)`.
+
+        Parameters:
+        - user_id: The ID of the user uploading the photo
+        - file: The FastAPI `UploadFile`
+
+        Returns:
+        - PhotoSaveResult with `photo_id`, `filename`, `path`
         """
+        # Import at call time so tests can monkeypatch
+        from app.db.mongodb import photos_collection
+
         user_folder = UPLOAD_DIR / user_id / "original"
         user_folder.mkdir(parents=True, exist_ok=True)
 
@@ -76,45 +87,48 @@ class PhotoService:
             "location": "Unknown"
         }
 
-        # persist document
+        file_md5 = _md5_file(str(save_path))
+        # If a photo with the same MD5 already exists for this user, reuse it
+        existing = photos_collection.find_one({"user_id": user_id, "md5": file_md5})
+        if existing:
+            # Optionally update filename/path/metadata to latest
+            photos_collection.update_one(
+                {"user_id": user_id, "md5": file_md5},
+                {"$set": {"filename": filename, "path": str(save_path), "metadata": metadata}}
+            )
+            return {
+                "photo_id": existing.get("photo_id", file_id),
+                "filename": filename,
+                "path": str(save_path)
+            }
+
+        # Persist as a new document including md5 to avoid duplicates
         photos_collection.insert_one({
             "photo_id": file_id,
             "user_id": user_id,
             "filename": filename,
-            "path": str(save_path) if save_path is not None else None,
-            # "persons_detected": persons,  # add when detection implemented
-            "metadata": metadata
+            "path": str(save_path),
+            "metadata": metadata,
+            "md5": file_md5,
         })
-
-        file_md5 = _md5_file(str(save_path))
-        photos_collection.update_one(
-            {"user_id": user_id, "md5": file_md5},
-            {
-                "$setOnInsert": {"photo_id": file_id},
-                "$set": {
-                    "filename": filename,
-                    "path": str(save_path),
-                    "metadata": metadata,
-                    "md5": file_md5,
-                }
-            },
-            upsert=True
-        )
-        return {
-            "photo_id": file_id,
-            "filename": filename,
-            "path": str(save_path)
-        }
+        return {"photo_id": file_id, "filename": filename, "path": str(save_path)}
 
     @staticmethod
     def get_photo_doc(user_id: str, photo_id: str) -> Optional[dict]:
         """
         Return MongoDB document for given user/photo or None if not found.
         """
+        from app.db.mongodb import photos_collection
         return photos_collection.find_one({"photo_id": photo_id, "user_id": user_id})
 
     @staticmethod
     def search_person(user_id: str, person_name: str) -> List[Dict[str, Any]]:
+        """Search photos belonging to `user_id` that match `person_name`.
+
+        Matches on `persons_detected` or `faces.person_name` fields.
+        Returns a simplified list of photo records.
+        """
+        from app.db.mongodb import photos_collection
         q = {
             "user_id": user_id,
             "$or": [
@@ -136,6 +150,8 @@ class PhotoService:
 
     @staticmethod
     def delete_photo(user_id: str, photo_id: str) -> dict:
+        """Delete a single photo for a user from disk and DB by `photo_id`."""
+        from app.db.mongodb import photos_collection
         doc = photos_collection.find_one({"user_id": user_id, "photo_id": photo_id})
         if not doc:
             return {"status": "not_found"}
@@ -152,38 +168,55 @@ class PhotoService:
     
     @staticmethod
     def update_photo_path(user_id: str, old_path: str, new_path: str, person_name: Optional[str] = None) -> None:
-        from pathlib import Path
+        """Update the stored path (and MD5) of a photo, avoiding duplicates.
+
+        If a document exists for `(user_id, path=old_path)`, update it.
+        Otherwise, if a document exists for `(user_id, md5(new_path))`, update its path.
+        No upsert that could create duplicate documents.
+        """
+        from app.db.mongodb import photos_collection
         file_md5 = _md5_file(new_path)
-        update = {"$set": {"path": new_path, "md5": file_md5}}
+        update: Dict[str, Any] = {"$set": {"path": new_path, "md5": file_md5}}
         if person_name:
             update["$addToSet"] = {"persons_detected": person_name}
-        photos_collection.update_one({"user_id": user_id, "path": old_path}, update)
-        photos_collection.update_one(
-            {"user_id": user_id, "md5": file_md5},
-            {"$setOnInsert": {"photo_id": str(uuid.uuid4())}, "$set": {"path": new_path}},
-            upsert=True
-        )
+        res = photos_collection.update_one({"user_id": user_id, "path": old_path}, update)
+        if not res.matched_count:
+            photos_collection.update_one({"user_id": user_id, "md5": file_md5}, update)
 
     @staticmethod
     def insert_local_photo(user_id: str, src_path: str, dest_path: str, note: Optional[str] = None) -> dict:
+        from app.db.mongodb import photos_collection
+        """Insert a locally processed photo for a user, deduplicating by MD5.
+
+        Returns `{status: 'ok', photo_id}` on insert, or `{status: 'exists', photo_id}` if duplicate.
+        """
         file_id = str(uuid.uuid4())
-        md = {
-            "date_taken": str(datetime.now().date()),
-            "location": "Unknown",
-            "note": note
-        }
+        md = {"date_taken": str(datetime.now().date()), "location": "Unknown", "note": note}
+        file_md5 = _md5_file(dest_path)
+        existing = photos_collection.find_one({"user_id": user_id, "md5": file_md5})
+        if existing:
+            # ensure latest path/metadata
+            photos_collection.update_one({"user_id": user_id, "md5": file_md5}, {"$set": {"path": dest_path, "metadata": md}})
+            return {"status": "exists", "photo_id": existing.get("photo_id")}
         doc = {
             "photo_id": file_id,
             "user_id": user_id,
             "filename": Path(dest_path).name,
             "path": dest_path,
-            "metadata": md
+            "metadata": md,
+            "md5": file_md5,
         }
         photos_collection.insert_one(doc)
         return {"status": "ok", "photo_id": file_id}
     
     @staticmethod
     def reassign_photo(user_id: str, photo_id: str, person_name: str) -> dict:
+        """Move a photo to a person's folder and tag it with that person.
+
+        Also increments the person's `photos_count` and ensures folder exists.
+        Returns `{status: 'ok', path}` if moved.
+        """
+        from app.db.mongodb import photos_collection, persons_collection
         doc = photos_collection.find_one({"user_id": user_id, "photo_id": photo_id})
         if not doc or not doc.get("path"): return {"status": "not_found"}
         src = Path(doc["path"])
@@ -211,6 +244,7 @@ class PhotoService:
     
     @staticmethod
     def delete_batch(user_id: str, photo_ids: list[str]) -> dict:
+        """Delete multiple photos by `photo_ids` for a user. Returns count deleted."""
         deleted = 0
         for pid in photo_ids:
             doc = photos_collection.find_one({"user_id": user_id, "photo_id": pid})
