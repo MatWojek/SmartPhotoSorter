@@ -143,11 +143,12 @@ flutter run -d linux    # Windows: flutter run -d windows
 ## Usage
 
 ### Backend (development, auto-reload)
+
 ```bash
 cd backend
-[run_dev.sh](http://_vscodecontentref_/9)           # Linux / macOS
-# lub
-[run_dev.bat](http://_vscodecontentref_/10)            # Windows
+./run_dev.sh         # Linux / macOS
+# or
+./run_dev.bat           # Windows
 ```
 
 ### Frontend
