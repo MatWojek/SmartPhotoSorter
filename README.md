@@ -37,8 +37,8 @@ It can be adapted for personal use (organizing family albums), professional work
 SmartPhotoSorter/
 ├── backend/
 │   ├── app/
-│   │   ├── [main.py](http://_vscodecontentref_/0)
-│   │   ├── [config.py](http://_vscodecontentref_/1)
+│   │   ├── main.py
+│   │   ├── config.py
 │   │   ├── auth/
 │   │   ├── db/
 │   │   ├── ml/
@@ -48,13 +48,13 @@ SmartPhotoSorter/
 │   │   ├── storage/
 │   │   ├── tests/
 │   │   └── utils/
-│   ├── [requirements.txt](http://_vscodecontentref_/2)
+│   ├── requirements.txt
 │   ├── Dockerfile
-│   ├── [run_dev.sh](http://_vscodecontentref_/3)
-│   └── [run_dev.bat](http://_vscodecontentref_/4)
+│   ├── run_dev.sh
+│   └── run_dev.bat
 ├── frontend_flutter/
 │   ├── lib/
-│   │   ├── [main.dart](http://_vscodecontentref_/5)
+│   │   ├── main.dart
 │   │   ├── core/
 │   │   ├── features/
 │   │   ├── models/
@@ -69,8 +69,8 @@ SmartPhotoSorter/
 │   ├── api_endpoints.md
 │   ├── database_structure.md
 │   └── flow_user_upload.md
-├── [docker-compose.yml](http://_vscodecontentref_/6)
-└── [README.md](http://_vscodecontentref_/7)
+├── docker-compose.yml
+└── README.md
 ```
 
 ## Backend (FastAPI) – key modules
