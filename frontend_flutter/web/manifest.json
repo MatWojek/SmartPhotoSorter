@@ -1,6 +1,6 @@
 {
-    "name": "frontend_flutter",
-    "short_name": "frontend_flutter",
+    "name": "SmartPhotoSorter",
+    "short_name": "SmartPhotoSorter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
