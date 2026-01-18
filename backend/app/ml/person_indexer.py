@@ -6,6 +6,7 @@ import hashlib
 import os
 import uuid
 
+
 from app.db.mongodb import photos_collection
 from app.db.mongodb import persons_collection
 from app.ml.face_attributes import extract_eye_color, extract_hair_color
@@ -30,6 +31,7 @@ HAIR_COLORS = {"black", "brown", "blond", "red", "gray"}
 EYE_COLORS = {"blue", "green", "brown", "hazel", "dark"}
 
 class PersonIndexer:
+
     def __init__(self, sorter: Optional[FaceSorter] = None) -> None:
         self.sorter = sorter or FaceSorter()
 

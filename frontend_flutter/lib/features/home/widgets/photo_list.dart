@@ -50,7 +50,7 @@ class _PhotoListState extends State<PhotoList> {
     if (choice == null) return;
     final newName = (choice['new'] ?? '').trim();
     final name = (choice['selected'] != null && (choice['selected'] as String).isNotEmpty) ? choice['selected']! : newName;
-    if (name == null || name.isEmpty) return;
+    if (name.isEmpty) return;
     if (persons.whereType<Map<String, dynamic>>().every((p) => p['name'] != name)) {
       await ApiService.createPerson(widget.userId, name);
     }

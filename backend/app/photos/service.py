@@ -43,7 +43,8 @@ class PhotoService:
 
     @staticmethod
     def save_photo(user_id: str, file: UploadFile) -> PhotoSaveResult:
-        """Save an uploaded photo for a specific user.
+        """
+        Save an uploaded photo for a specific user.
 
         Writes the file to `STORAGE_ROOT/user_uploads/{user_id}/original`,
         computes its MD5, and ensures no duplicates exist for the same user

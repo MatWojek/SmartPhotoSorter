@@ -8,7 +8,8 @@ BASE_STORAGE = STORAGE_ROOT/"persons"
 
 
 class PersonService:
-    """Operations on person collections for a given user.
+    """
+    Operations on person collections for a given user.
 
     Handles creating, listing and deleting person folders and records.
     """
@@ -22,7 +23,8 @@ class PersonService:
         eye_color_confidence: float | None = None, 
         hair_color_confidence: float | None = None, 
     ):
-        """Create a person collection folder and DB record for `user_id`.
+        """
+        Create a person collection folder and DB record for `user_id`.
 
         Optional attributes like eye and hair color are stored on the person
         document so that the UI can later filter people by these traits.
@@ -66,7 +68,8 @@ class PersonService:
         eye_color_confidence: float | None = None, 
         hair_color_confidence: float | None = None,
     ):
-        """Update optional attributes (eye/hair color) for an existing person.
+        """
+        Update optional attributes (eye/hair color) for an existing person.
 
         This keeps the document shape backwards compatible while allowing
         the UI (or tools) to enrich people with additional traits that can

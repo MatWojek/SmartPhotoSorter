@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime
 from PIL import Image, ExifTags
 
+
 def _exif_dict(img: Image.Image) -> Dict[int, Any]:
 	try:
 		exif = img._getexif()  # type: ignore[attr-defined]

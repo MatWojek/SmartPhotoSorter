@@ -87,7 +87,8 @@ def _copy_on_error(src_path: str, user_id: Optional[str], reason: str) -> Option
         return None
 
 class FaceSorter:
-    """Face recognition sorter and trainer.
+    """
+    Face recognition sorter and trainer.
 
     Maintains in-memory embeddings per person, supports training from folders
     and sorting an unsorted folder into person-specific subfolders. Uses MD5
@@ -202,18 +203,23 @@ class FaceSorter:
                             "copied_to": copied,
                             "message": "Unreadable, copied to storage root"
                         })
+
                     if user_id and copied:
                         from app.photos.service import PhotoService
                         PhotoService.insert_local_photo(user_id, path, copied, note="error_unreadable")
+                    
                     continue
                 faces = detect_faces(None, img)
+
                 if not faces:
                     if progress: progress({"status":"skip","photo":path,"message":"No face"})
                     continue
+
                 try:
                     emb = face_embed(img, faces[0])
                     new_embeds.append(emb)
                     new_paths.append(path)
+
                     if progress: progress({"status":"train","photo":path,"message":f"Added sample for {name}"})
                 except Exception:
                     if progress: progress({"status":"skip",
@@ -241,6 +247,7 @@ class FaceSorter:
         If the person exists, select the face closest to the mean embedding. 
         If not, select the largest face.
         """
+
         if person_name and person_name in self.person_means:
             mean = self.person_means[person_name]
             best_face = None
@@ -250,6 +257,7 @@ class FaceSorter:
                 try:
                     emb = face_embed(img, box)
                     dist = np.linalg.norm(mean - emb)
+
                     if dist < best_dist:
                         best_dist = dist
                         best_face = box
@@ -275,11 +283,13 @@ class FaceSorter:
         """
         total = sum(len(list_images(folder)) for folder in person_folders.values())
         done = 0
+
         for person, folder in person_folders.items():
             imgs = list_images(folder)
             embeds: List[np.ndarray] = []
             processed_paths: List[str] = []
             trained_md5s: set[str] = self._get_trained_md5s(user_id, person) if user_id else set()
+
             for path in imgs:
                 file_md5 = md5_file(path)
                 done += 1
@@ -287,6 +297,7 @@ class FaceSorter:
                     if progress: progress({"status":"skip","current":done,"total":total,"photo":path,"message":"Already trained"})
                     continue
                 img = read_image(path)
+
                 if img is None:
                     copied = _copy_on_error(path, user_id, "unreadable")
                     if progress:
@@ -296,11 +307,13 @@ class FaceSorter:
                             "copied_to": copied,
                             "message": "Unreadable, copied to storage root"
                         })
+
                     if user_id and copied:
                         from app.photos.service import PhotoService
                         PhotoService.insert_local_photo(user_id, path, copied, note="error_unreadable")
                     continue
                 faces = detect_faces(None, img)
+
                 if not faces:
                     if progress: progress({"status":"skip",
                                            "current":done,
@@ -308,21 +321,25 @@ class FaceSorter:
                                            "photo":path,
                                            "message":"No face"})
                     continue
+
                 try:
                     emb = face_embed(img, faces[0])
                     embeds.append(emb)
                     processed_paths.append(path)
+
                     if progress: progress({"status":"train",
                                            "current":done,
                                            "total":total,
                                            "photo":path,
                                            "message":f"Added sample for {person}"})
+                        
                 except Exception:
                     if progress: progress({"status":"skip",
                                            "current":done,
                                            "total":total,
                                            "photo":path,
                                            "message":"Encoding failed"})
+                        
             if embeds:
                 prev = self.person_embeds.get(person, [])
                 self.person_embeds[person] = prev + embeds
