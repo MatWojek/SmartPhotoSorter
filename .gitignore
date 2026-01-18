@@ -5,8 +5,8 @@ docs/to_documentation.txt
 .venv/
 venv/
 
-.vscode
+.vscode/
 
 backend/smartphotosorterdb
 
-app/
+app/storage/user_uploads

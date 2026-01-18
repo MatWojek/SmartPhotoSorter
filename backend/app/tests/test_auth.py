@@ -9,8 +9,10 @@ from app.main import app
 import app.auth.service as auth_service
 
 class FakeUsersCollection:
+
 	def __init__(self):
 		self._docs = {}
+		
 	def find_one(self, q):
 		if "$or" in q:
 			for cond in q["$or"]:
@@ -19,25 +21,31 @@ class FakeUsersCollection:
 						if d.get(k) == v:
 							return d
 			return None
+		
 		for k, v in q.items():
 			for d in self._docs.values():
 				if d.get(k) == v:
 					return d
 		return None
+	
 	def insert_one(self, doc):
 		self._docs[doc["user_id"]] = doc
 		class R: inserted_id = doc["user_id"]
 		return R()
+	
 	def delete_one(self, q):
 		uid = q.get("user_id")
 		if uid in self._docs:
 			del self._docs[uid]
 
 class FakePersonsCollection:
+
 	def __init__(self): self._docs = []
+
 	def delete_many(self, q):
 		uid = q.get("user_id")
 		self._docs = [d for d in self._docs if d.get("user_id") != uid]
+
 	def find_one(self, q, proj=None):
 		# minimal stub used by FaceSorter._get_trained_md5s
 		for d in self._docs:
@@ -46,6 +54,7 @@ class FakePersonsCollection:
 				if d.get(k) != v: ok = False; break
 			if ok: return d
 		return None
+	
 	def find(self, q, proj=None):
 		res = []
 		for d in self._docs:
@@ -59,6 +68,7 @@ class FakePersonsCollection:
 				else:
 					res.append(d)
 		return res
+	
 	def update_one(self, filt, update, upsert=False):
 		# Support $setOnInsert, $addToSet($each), $push($each,$slice), $set, $inc
 		# Find matching doc
@@ -116,13 +126,16 @@ class FakePersonsCollection:
 		return R()
 
 class FakePhotosCollection:
+
 	def __init__(self): self._docs = []
 	def find(self, q, proj=None):
 		# Ignore visual duplicates
 		return []
+	
 	def delete_many(self, q):
 		uid = q.get("user_id")
 		self._docs = [d for d in self._docs if d.get("user_id") != uid]
+
 	def delete_one(self, q):
 		# remove first matching
 		for i, d in enumerate(self._docs):
@@ -132,6 +145,7 @@ class FakePhotosCollection:
 			if ok:
 				self._docs.pop(i)
 				return
+			
 	def find_one(self, q, proj=None):
 		for d in self._docs:
 			ok = True
@@ -139,10 +153,12 @@ class FakePhotosCollection:
 				if d.get(k) != v: ok = False; break
 			if ok: return d
 		return None
+	
 	def insert_one(self, doc):
 		self._docs.append(doc)
 		class R: inserted_id = doc.get("photo_id")
 		return R()
+	
 	def update_one(self, filt, update, upsert=False):
 		target = None
 		for d in self._docs:
@@ -170,6 +186,8 @@ class FakePhotosCollection:
 		return R()
 
 def test_register_login_delete_account(monkeypatch, tmp_path):
+
+	
 	# Patch collections
 	import app.db.mongodb as m
 	m.users_collection = FakeUsersCollection()

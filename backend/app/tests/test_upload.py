@@ -8,7 +8,9 @@ from app.photos.service import PhotoService
 import app.db.mongodb as m
 
 class FakePhotosCollection:
+
 	def __init__(self): self._docs = []
+
 	def find_one(self, q, *args, **kwargs):
 		for d in self._docs:
 			ok = True
@@ -16,12 +18,15 @@ class FakePhotosCollection:
 				if d.get(k) != v: ok = False; break
 			if ok: return d
 		return None
+	
 	def insert_one(self, doc): self._docs.append(doc)
+
 	def update_one(self, q, update, upsert=False):
 		doc = self.find_one(q)
 		if doc:
 			if "$set" in update:
 				doc.update(update["$set"])
+				
 		elif upsert:
 			newdoc = {**q}
 			if "$set" in update: newdoc.update(update["$set"])
