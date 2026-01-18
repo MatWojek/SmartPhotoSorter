@@ -7,136 +7,185 @@ Using this dataset, the AI learns to recognize categories (such as family, pets,
 This project aims to make photo management faster, smarter, and more intuitive.
 It can be adapted for personal use (organizing family albums), professional workflows (photographers sorting thousands of shots), or specialized domains (medical imaging, research datasets, etc.).
 
-## ✨ Features
+## Features
 
-- 📂 **Automatic Sorting** – No more manual dragging and dropping. Let the AI handle it.
-- 🧠 **AI-Powered Classification** – Learns from a dataset of pre-sorted images.
-- 📸 **Custom Categories** – Works with any type of photo categories (e.g., holidays, family, pets).
+- **Automatic Sorting** – Automatically organizes unsorted photos into per-person / per-collection folders.
+- **Face-Based Classification** – Uses face embeddings to recognize and group people across photos.
+- **Per-Person Attributes** – Extracts eye and hair color (with confidence scores) to support rich filtering.
+- 🔍 **Advanced Filtering** – Filter persons by eye color, hair color and minimal confidence, and filter photos by selected people/traits in the Flutter UI.
 - ⚡ **Batch Processing** – Sorts entire folders of unsorted images at once.
+- **Web API + Flutter UI** – FastAPI backend with a cross‑platform Flutter frontend.
 
-## 🚀 How It Works
+## How It Works
 
-1. **Training Phase**  
-   - Provide a dataset of images that are already sorted into category folders.  
-   - The AI learns to recognize patterns and visual features for each category.  
+1. **Training / Indexing Phase**  
+   - Provide a set of training folders (e.g. one folder per person).  
+   - The ML module builds face embeddings for each person and stores them in MongoDB.  
+   - During indexing, photos are scanned, faces detected and matched to known persons; person documents are enriched with attributes (eye_color, hair_color, confidence).
 
-2. **Sorting Phase**
-3. 
+2. **Sorting Phase**  
    - Provide a folder with unsorted images.  
-   - The AI analyzes each photo and moves it into the most suitable category folder.  
+   - The AI analyzes each photo, matches faces to persons and routes images into the appropriate target folders (or an “unknown” folder when not sure).
 
-## 📂 Project Structure
+3. **Exploration & Filtering (Frontend)**  
+   - The Flutter app lists persons, their photos and basic traits.  
+   - A filter panel lets you limit photos by person, eye color, hair color and attribute combinations.
 
-```
+## Project Structure
+
+```text
 SmartPhotoSorter/
 ├── backend/
-    ├── app/
-    │   ├── main.py
-    │   ├── config.py
-    │   ├── db/
-    │   │   ├── mongodb.py
-    │   │   └── collections.py
-    │   ├── auth/
-    │   │   ├── __init__.py
-    │   │   ├── routes.py
-    │   │   ├── schemas.py
-    │   │   ├── service.py
-    │   │   ├── hashing.py
-    │   │   └── jwt_handler.py
-    │   ├── users/
-    │   │   ├── __init__.py
-    │   │   ├── repository.py
-    │   │   └── schemas.py
-    │   ├── photos/
-    │   │   ├── __init__.py
-    │   │   ├── routes.py
-    │   │   ├── service.py
-    │   │   ├── schemas.py
-    │   │   └── file_manager.py
-    │   ├── ml/
-    │   │   ├── __init__.py
-    │   │   ├── face_recognition.py
-    │   │   ├── extract_metadata.py
-    │   │   └── person_indexer.py
-    │   ├── storage/
-    │   │   └── user_uploads/
-    │   ├── utils/
-    │   │   ├── __init__.py
-    │   │   ├── file_utils.py
-    │   │   ├── security.py
-    │   │   └── photo_filters.py
-    │   └── routes/
-    │       ├── __init__.py
-    │       └── index.py
-    ├── requirements.txt
-    ├── Dockerfile
-    └── .env
+│   ├── app/
+│   │   ├── [main.py](http://_vscodecontentref_/0)
+│   │   ├── [config.py](http://_vscodecontentref_/1)
+│   │   ├── auth/
+│   │   ├── db/
+│   │   ├── ml/
+│   │   ├── persons/
+│   │   ├── photos/
+│   │   ├── routes/
+│   │   ├── storage/
+│   │   ├── tests/
+│   │   └── utils/
+│   ├── [requirements.txt](http://_vscodecontentref_/2)
+│   ├── Dockerfile
+│   ├── [run_dev.sh](http://_vscodecontentref_/3)
+│   └── [run_dev.bat](http://_vscodecontentref_/4)
 ├── frontend_flutter/
 │   ├── lib/
-│   │   ├── main.dart
-│   │   ├── api/
-│   │   │   ├── auth_api.dart
-│   │   │   ├── photo_api.dart
-│   │   │
-│   │   ├── screens/
-│   │   │   ├── login_screen.dart
-│   │   │   ├── register_screen.dart
-│   │   │   ├── person_gallery_screen.dart
-│   │   │   ├── photo_view_screen.dart
-│   │   │   ├── loading_screen.dart
-│   │   │
-│   │   ├── widgets/
-│   │   │   ├── photo_tile.dart
-│   │   │   ├── person_tile.dart
-│   │
-│   ├── assets/
-│   │   ├── icons/
-│   │   ├── mock_photos/
-│   │
+│   │   ├── [main.dart](http://_vscodecontentref_/5)
+│   │   ├── core/
+│   │   ├── features/
+│   │   ├── models/
+│   │   ├── services/
+│   │   └── utils/
 │   ├── pubspec.yaml
-│
-├── docker-compose.yml
-├── README.md
-└── docs/
-    ├── api_endpoints.md
-    ├── database_structure.md
-    ├── flow_user_upload.md
+│   └── …
+├── app/
+│   └── storage/
+│       └── user_uploads/
+├── docs/
+│   ├── api_endpoints.md
+│   ├── database_structure.md
+│   └── flow_user_upload.md
+├── [docker-compose.yml](http://_vscodecontentref_/6)
+└── [README.md](http://_vscodecontentref_/7)
 ```
+
+## Backend (FastAPI) – key modules
+
+- backend/app/main.py – FastAPI application factory, CORS setup, router registration (auth, photos, persons, ml, services).
+- backend/app/config.py – Global configuration, storage root (e.g. smartphotosorterdb).
+- backend/app/db/mongodb.py – MongoDB connection and collections (persons, photos, etc.).
+- backend/app/auth/routes.py – Auth endpoints (register/login).
+- backend/app/auth/service.py – Business logic for authentication and password hashing.
+- backend/app/photos/routes.py – REST endpoints for photo upload, listing and download.
+- backend/app/photos/service.py – File handling, persistence of photo metadata and links to persons.
+- backend/app/persons/service.py – Person CRUD, attribute updates, filtering by eye/hair color and confidence.
+- backend/app/persons/routes.py – Persons API:
+  - create person (with optional eye_color / hair_color and confidence),
+  - update person attributes,
+  - list persons,
+  - delete person folder,
+  - filter persons by traits (POST /persons/filter/{user_id}).
+- backend/app/ml/face_recognition.py – Face detection, face embeddings, training from folders, duplicate detection.
+- backend/app/ml/person_indexer.py – Walks folders, indexes photos into MongoDB, links photos to persons and aggregates per‑person statistics (including attributes).
+- backend/app/ml/extract_metadata.py – Extracts EXIF / metadata like dates and basic info.
+- backend/app/ml/routes.py – ML endpoints:
+  - start local sorting,
+  - start DB indexing,
+  - SSE / WebSocket progress reporting.
+- backend/app/storage/ – Storage adapters (e.g. local filesystem, database storage).
+- backend/app/tests/ – Backend test suite (auth, upload, face recognition, persons, persistence).
+- backend/app/utils/security.py – Security helpers, JWT / password utils and related functions.
+
+---
+
+## Frontend (Flutter) – key modules
+
+- frontend_flutter/lib/main.dart – Flutter entry point, app widget, theme controller setup.
+- frontend_flutter/lib/core/ – App-wide theming, constants and helpers (e.g. light/dark themes, theme controller).
+- frontend_flutter/lib/features/home/home_page.dart – Main screen with person/photo views and actions (training, sorting, upload).
+- frontend_flutter/lib/features/home/widgets/photo_grid.dart – Grid view of photos with multi‑selection and actions.
+- frontend_flutter/lib/features/home/widgets/photo_list.dart – List view of photos with actions (open, reveal, download, move to collection, delete).
+- frontend_flutter/lib/features/home/widgets/training_folders_dialog.dart – Dialog for defining training folders per person (manual training data configuration).
+- frontend_flutter/lib/features/navigation/filter_bottom_sheet.dart – Bottom sheet with filters by persons, eye color and hair color (uses backend attributes).
+- frontend_flutter/lib/features/navigation/person_search.dart – Search dialog for selecting persons.
+- frontend_flutter/lib/models/person.dart – Person model (name, photos_count, eye_color, hair_color).
+- frontend_flutter/lib/services/api_service.dart – HTTP client for backend API (auth, persons, photos, ML routes).
+- frontend_flutter/lib/utils/ – Utility helpers (e.g. file actions, dialogs, formatting).
+
+---
 
 ## 🔧 Installation
 
+### Backend 
+
 ```bash
-git clone https://github.com/yourusername/SmartPhotoSorter.git
+git clone https://github.com/MatWojek/SmartPhotoSorter.git
 cd SmartPhotoSorter
+cd backend
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
+### Frontend (Flutter)
 
-## ▶️ Usage
+```bash
+cd frontend_flutter
+flutter pub get
+flutter run -d linux    # Windows: flutter run -d windows
+```
 
-python src/train.py --data ./data/training
-python src/sort.py --input ./data/unsorted --output ./data/
+---
 
-## 📌 Requirements
+## Usage
 
-- Python 3.9+
-- TensorFlow / PyTorch (depending on chosen framework)
-- OpenCV
-- scikit-learn
-- numpy
+### Backend (development, auto-reload)
+```bash
+cd backend
+[run_dev.sh](http://_vscodecontentref_/9)           # Linux / macOS
+# lub
+[run_dev.bat](http://_vscodecontentref_/10)            # Windows
+```
 
-## 🌍 Roadmap
+### Frontend
 
-- Add GUI for easy drag-and-drop sorting
-- Support for cloud storage (Google Drive, OneDrive, etc.)
-- Improve accuracy with transfer learning models (ResNet, EfficientNet)
-- Add duplicate photo detection
+```bash
+cd frontend_flutter
+flutter pub get
+flutter run -d linux    # Windows: flutter run -d windows
+```
+
+### Docker (optional)
+
+```bash 
+docker-compose up --build
+```
+
+---
+
+## Requirements
+
+ - Python 3.11+
+ - MongoDB
+ - FastAPI + Uvicorn
+ - face_recognition (dlib‑based)
+ - OpenCV
+ - Flutter 3+ (for the frontend)
+
+---
 
 ## 📜 License
 
 This project is licensed under the MIT License.
+
+---
 
 ## 👨‍💻 Author 
 
 Created by an enthusiastic programmer with a passion for AI-powered content.
 The author is MatWojas.
 
+---

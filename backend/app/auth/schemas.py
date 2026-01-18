@@ -1,4 +1,5 @@
-"""Pydantic schemas for authentication endpoints.
+"""
+Pydantic schemas for authentication endpoints.
 
 Defines request/response models for register/login/delete operations.
 Use these in route handlers to validate payloads and document the API.

@@ -1,4 +1,5 @@
-"""JWT helpers for issuing and verifying access tokens.
+"""
+JWT helpers for issuing and verifying access tokens.
 
 Wraps `python-jose` to create and decode JWTs with HS256. Tokens include the
 subject (`sub` = user_id) and expiration (`exp`).
@@ -13,7 +14,8 @@ SECRET_KEY = os.getenv("JWT_SECRET", "secret-key")
 ALGORITHM = "HS256"
 
 def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None) -> str:
-	"""Create a signed JWT for the given `user_id`.
+	"""
+	Create a signed JWT for the given `user_id`.
 
 	Parameters:
 	- user_id: unique identifier of the user
@@ -27,7 +29,8 @@ def create_access_token(user_id: str, expires_delta: Optional[timedelta] = None)
 	return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 def decode_token(token: str) -> Tuple[Optional[str], Optional[dict]]:
-	"""Decode and validate a JWT.
+	"""
+	Decode and validate a JWT.
 
 	Parameters:
 	- token: encoded JWT

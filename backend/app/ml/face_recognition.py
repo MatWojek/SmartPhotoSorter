@@ -53,6 +53,7 @@ def detect_faces(detector, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
     return faces
 
 def face_embed(img: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
+    
     x, y, w, h = box
     top, right, bottom, left = y, x + w, y + h, x
 
@@ -74,12 +75,14 @@ def face_embed(img: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
 
 
 def _copy_on_error(src_path: str, user_id: Optional[str], reason: str) -> Optional[str]:
+
     try:
         base = Path("smartphotosorterdb") / "errors" / (user_id or "general") / reason
         base.mkdir(parents=True, exist_ok=True)
         dest = base / Path(src_path).name
         shutil.copy2(src_path, dest)
         return str(dest)
+    
     except Exception:
         return None
 
@@ -100,7 +103,11 @@ class FaceSorter:
     def load_from_db(self, user_id: str) -> None:
         """Load existing embeddings for a `user_id` from the DB into memory."""
         from app.db.mongodb import persons_collection
-        docs = persons_collection.find({"user_id": user_id}, {"_id": 0, "name": 1, "embeddings": 1, "mean_embedding": 1})
+        docs = persons_collection.find({"user_id": user_id}, {"_id": 0, 
+                                                              "name": 1, 
+                                                              "embeddings": 1, 
+                                                              "mean_embedding": 1
+                                                            })
         for d in docs:
             name = d["name"]
             embeds = [np.array(e, dtype=np.float64) for e in d.get("embeddings", [])]
@@ -111,7 +118,9 @@ class FaceSorter:
 
     def _get_trained_md5s(self, user_id: str, person: str) -> set[str]:
         from app.db.mongodb import persons_collection
-        doc = persons_collection.find_one({"user_id": user_id, "name": person}, {"trained_files": 1})
+        doc = persons_collection.find_one({"user_id": user_id, 
+                                           "name": person}, 
+                                           {"trained_files": 1})
         md5s: set[str] = set()
         if doc and doc.get("trained_files"):
             for f in doc["trained_files"]:
@@ -121,7 +130,15 @@ class FaceSorter:
                     md5s.add(f)
         return md5s
 
-    def _persist_person(self, user_id: str, person: str, new_embeds: list[np.ndarray], new_files: list[str], folder: str) -> None:
+    def _persist_person(
+            self, 
+            user_id: str, 
+            person: str, 
+            new_embeds: list[np.ndarray], 
+            new_files: list[str], 
+            folder: str
+        ) -> None:
+
         from app.db.mongodb import persons_collection
         if not new_embeds:
             return
@@ -131,30 +148,41 @@ class FaceSorter:
                 "$setOnInsert": {"path": folder},
                 "$push": {"embeddings": {"$each": [e.tolist() for e in new_embeds], "$slice": -200}},
                 "$set": {"mean_embedding": self.person_means[person].tolist()},
-                "$addToSet": {"trained_files": {"$each": [{"md5": md5_file(p), "filename": os.path.basename(p)} for p in new_files]}}
+                "$addToSet": {"trained_files": {"$each": [{"md5": md5_file(p), 
+                                                           "filename": os.path.basename(p)} for p in new_files]}}
             },
             upsert=True
         )
 
     def ensure_trained_for_user(self, user_id: str, progress: Optional[ProgressCb] = None) -> None:
         """Ensure all person folders for `user_id` are trained, skipping already-trained files."""
+
         from app.db.mongodb import persons_collection
-        persons = list(persons_collection.find({"user_id": user_id}, {"_id": 0, "name": 1, "path": 1, "trained_files": 1}))
+
+        persons = list(persons_collection.find({"user_id": user_id}, {"_id": 0, 
+                                                                      "name": 1, 
+                                                                      "path": 1, 
+                                                                      "trained_files": 1}))
         for p in persons:
             name = p["name"]
             folder = p.get("path")
+
             if not folder:
                 continue
             imgs = list_images(folder)
             trained_md5s = set()
+
             if p.get("trained_files"):
                 for f in p["trained_files"]:
                     if isinstance(f, dict) and "md5" in f: trained_md5s.add(f["md5"])
                     elif isinstance(f, str): trained_md5s.add(f)
+
             new_embeds: List[np.ndarray] = []
             new_paths: List[str] = []
+
             for path in imgs:
                 file_md5 = md5_file(path)
+
                 if file_md5 in trained_md5s:
                     if progress: progress({
                         "status":"skip",
@@ -162,7 +190,9 @@ class FaceSorter:
                         "message":"Already trained"
                     })
                     continue
+        
                 img = read_image(path)
+
                 if img is None:
                     copied = _copy_on_error(path, user_id, "unreadable")
                     if progress:
@@ -272,15 +302,27 @@ class FaceSorter:
                     continue
                 faces = detect_faces(None, img)
                 if not faces:
-                    if progress: progress({"status":"skip","current":done,"total":total,"photo":path,"message":"No face"})
+                    if progress: progress({"status":"skip",
+                                           "current":done,
+                                           "total":total,
+                                           "photo":path,
+                                           "message":"No face"})
                     continue
                 try:
                     emb = face_embed(img, faces[0])
                     embeds.append(emb)
                     processed_paths.append(path)
-                    if progress: progress({"status":"train","current":done,"total":total,"photo":path,"message":f"Added sample for {person}"})
+                    if progress: progress({"status":"train",
+                                           "current":done,
+                                           "total":total,
+                                           "photo":path,
+                                           "message":f"Added sample for {person}"})
                 except Exception:
-                    if progress: progress({"status":"skip","current":done,"total":total,"photo":path,"message":"Encoding failed"})
+                    if progress: progress({"status":"skip",
+                                           "current":done,
+                                           "total":total,
+                                           "photo":path,
+                                           "message":"Encoding failed"})
             if embeds:
                 prev = self.person_embeds.get(person, [])
                 self.person_embeds[person] = prev + embeds
@@ -366,7 +408,11 @@ class FaceSorter:
 
 
 
-    def _is_visual_duplicate(self, user_id: str, emb: np.ndarray, threshold: float = 0.15) -> bool:
+    def _is_visual_duplicate(
+            self, user_id: str, 
+            emb: np.ndarray, 
+            threshold: float = 0.15
+        ) -> bool:
         # Check if a visually similar image already exists in the database
         from app.db.mongodb import photos_collection
 

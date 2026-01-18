@@ -13,12 +13,10 @@ class TrainingFoldersDialog extends StatefulWidget {
 
 class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
   final List<MapEntry<String, String>> _pairs = [];
-  final ScrollController _scrollCtrl = ScrollController();
   String? _selectedFolder;
 
   @override
   void dispose() {
-    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -164,10 +162,8 @@ class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 420),
           child: Scrollbar(
-            controller: _scrollCtrl,
             thumbVisibility: true,
             child: SingleChildScrollView(
-              controller: _scrollCtrl,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

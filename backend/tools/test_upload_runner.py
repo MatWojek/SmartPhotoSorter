@@ -26,7 +26,8 @@ class FakePhotosCollection:
 
 def run():
     # Patch DB dependency to avoid needing a real Mongo connection
-    photos_service.photos_collection = FakePhotosCollection()
+    from app.db.mongodb import photos_collection
+    photos_collection = FakePhotosCollection()
     client = TestClient(app)
 
     user_id = "test_user"

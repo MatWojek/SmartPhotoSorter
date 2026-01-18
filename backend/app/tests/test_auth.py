@@ -117,6 +117,9 @@ class FakePersonsCollection:
 
 class FakePhotosCollection:
 	def __init__(self): self._docs = []
+	def find(self, q, proj=None):
+		# Ignore visual duplicates
+		return []
 	def delete_many(self, q):
 		uid = q.get("user_id")
 		self._docs = [d for d in self._docs if d.get("user_id") != uid]

@@ -136,7 +136,11 @@ class PhotoService:
                 {"faces.person_name": {"$regex": person_name, "$options": "i"}}
             ]
         }
-        photos = list(photos_collection.find(q, {"_id": 0, "photo_id": 1, "filename": 1, "path": 1, "metadata": 1}))
+        photos = list(photos_collection.find(q, {"_id": 0, "photo_id": 1, 
+                                                 "filename": 1, 
+                                                 "path": 1, 
+                                                 "metadata": 1
+                                                }))
         def normalize(p):
             md = p.get("metadata") or {}
             return {
@@ -167,8 +171,14 @@ class PhotoService:
         return {"status": "ok"}
     
     @staticmethod
-    def update_photo_path(user_id: str, old_path: str, new_path: str, person_name: Optional[str] = None) -> None:
-        """Update the stored path (and MD5) of a photo, avoiding duplicates.
+    def update_photo_path(
+            user_id: str,
+            old_path: str, 
+            new_path: str, 
+            person_name: Optional[str] = None
+        ) -> None:
+        """
+        Update the stored path (and MD5) of a photo, avoiding duplicates.
 
         If a document exists for `(user_id, path=old_path)`, update it.
         Otherwise, if a document exists for `(user_id, md5(new_path))`, update its path.
@@ -245,6 +255,8 @@ class PhotoService:
     @staticmethod
     def delete_batch(user_id: str, photo_ids: list[str]) -> dict:
         """Delete multiple photos by `photo_ids` for a user. Returns count deleted."""
+        from app.db.mongodb import photos_collection
+
         deleted = 0
         for pid in photo_ids:
             doc = photos_collection.find_one({"user_id": user_id, "photo_id": pid})

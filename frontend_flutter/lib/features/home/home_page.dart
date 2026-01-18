@@ -39,7 +39,7 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       persons = [
         for (final p in list)
-          Person(name: p['name'] as String, photos: (p['photos_count'] as num?)?.toInt() ?? 0),
+          Person.fromMap(p as Map<String, dynamic>),
       ];
     });
   }

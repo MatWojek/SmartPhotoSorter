@@ -40,6 +40,7 @@ class FakeUsersCollection:
 
 def run():
     # Patch DB dependency to avoid needing a real Mongo connection
+    
     auth_service.users_collection = FakeUsersCollection()
     client = TestClient(app)
 
