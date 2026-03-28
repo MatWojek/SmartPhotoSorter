@@ -17,6 +17,7 @@ ensure_websocket_support()
 PY
 
 PORT="${PORT:-8000}"
+HOST="${HOST:-127.0.0.1}"
 
 # Try to free the port if a previous dev server is still running
 if command -v lsof >/dev/null 2>&1; then
@@ -34,5 +35,30 @@ elif command -v fuser >/dev/null 2>&1; then
   fi
 fi
 
-# Start
-uvicorn app.main:app --reload
+# Start and validate API reachability
+uvicorn app.main:app --reload --host "${HOST}" --port "${PORT}" &
+UVICORN_PID=$!
+
+cleanup() {
+  if kill -0 "${UVICORN_PID}" >/dev/null 2>&1; then
+    kill "${UVICORN_PID}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup INT TERM EXIT
+
+echo "Waiting for API on http://127.0.0.1:${PORT}/ ..."
+for _ in $(seq 1 30); do
+  if python - <<PY >/dev/null 2>&1
+import urllib.request
+urllib.request.urlopen("http://127.0.0.1:${PORT}/", timeout=1)
+PY
+  then
+    echo "Backend is running on http://${HOST}:${PORT}"
+    wait "${UVICORN_PID}"
+    exit $?
+  fi
+  sleep 1
+done
+
+echo "API did not start within 30s. Check logs above."
+exit 1

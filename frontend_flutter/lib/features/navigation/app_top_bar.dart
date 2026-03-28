@@ -4,15 +4,20 @@ import '../auth/auth_registration_page.dart';
 import '../../core/theme_controller.dart';
 import 'person_search.dart';
 import 'filter_bottom_sheet.dart';
-import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 
 class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
   final bool loggedIn;
-  final void Function(bool loggedIn, {String? userId, String? token}) onAuthChanged;
+  final void Function(bool loggedIn, {String? userId, String? token})
+  onAuthChanged;
 
   final String? userId;
   final ValueChanged<String>? onSearchPerson;
-  final void Function({required List<String> persons, Map<String, dynamic>? attributes})? onFiltersApplied;
+  final void Function({
+    required List<String> persons,
+    Map<String, dynamic>? attributes,
+  })?
+  onFiltersApplied;
 
   const AppTopBar({
     super.key,
@@ -34,7 +39,9 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         IconButton(
           tooltip: isDark ? 'Light mode' : 'Dark mode',
-          icon: Icon(isDark ? Icons.wb_sunny_outlined : Icons.dark_mode_outlined),
+          icon: Icon(
+            isDark ? Icons.wb_sunny_outlined : Icons.dark_mode_outlined,
+          ),
           onPressed: () => themeController.toggle(),
         ),
         if (canQuery) ...[
@@ -61,8 +68,10 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
                 builder: (_) => FilterBottomSheet(userId: userId!),
               );
               if (res != null && onFiltersApplied != null) {
-                final persons = (res['persons'] as List<dynamic>? ?? []).cast<String>();
-                final attributes = (res['attributes'] as Map<String, dynamic>?) ?? {};
+                final persons = (res['persons'] as List<dynamic>? ?? [])
+                    .cast<String>();
+                final attributes =
+                    (res['attributes'] as Map<String, dynamic>?) ?? {};
                 onFiltersApplied!(persons: persons, attributes: attributes);
               }
             },
@@ -92,7 +101,8 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => AuthRegistrationPage(onAuthChanged: onAuthChanged),
+                  builder: (_) =>
+                      AuthRegistrationPage(onAuthChanged: onAuthChanged),
                 ),
               );
             },
@@ -114,15 +124,23 @@ class AppTopBar extends StatelessWidget implements PreferredSizeWidget {
                   context: context,
                   builder: (_) => AlertDialog(
                     title: const Text('Delete account?'),
-                    content: const Text('This will permanently delete your account, collections and all photos.'),
+                    content: const Text(
+                      'This will permanently delete your account, collections and all photos.',
+                    ),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                      FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete'),
+                      ),
                     ],
                   ),
                 );
                 if (confirmed == true && userId != null && userId!.isNotEmpty) {
-                  final ok = await ApiService.deleteAccount(userId!);
+                  final ok = await AuthService.deleteAccount(userId!);
                   if (ok) {
                     onAuthChanged(false);
                   }

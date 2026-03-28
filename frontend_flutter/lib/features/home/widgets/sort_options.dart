@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../../../services/api_service.dart';
+import '../../../services/image_service.dart';
 import 'progress_overlay.dart';
 import 'training_folders_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,13 +10,13 @@ enum RunMode { local, database }
 
 class SortOptionsPanel extends StatefulWidget {
   final String? selectedFolder;
-  final String? currentUserId; 
+  final String? currentUserId;
   final VoidCallback? onAfterTask;
-  final bool forceLocalOnly; 
+  final bool forceLocalOnly;
 
   const SortOptionsPanel({
-    super.key, 
-    required this.selectedFolder, 
+    super.key,
+    required this.selectedFolder,
     this.currentUserId,
     this.onAfterTask,
     this.forceLocalOnly = false,
@@ -43,15 +43,23 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
   }
 
   Future<RunMode?> _chooseRunMode(BuildContext context) async {
-    if (widget.forceLocalOnly) return RunMode.local; 
+    if (widget.forceLocalOnly) return RunMode.local;
     return showDialog<RunMode>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Select a mode'),
-        content: const Text('Perform the operation locally or index in the database?'),
+        content: const Text(
+          'Perform the operation locally or index in the database?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, RunMode.local), child: const Text('Locally')),
-          FilledButton(onPressed: () => Navigator.pop(context, RunMode.database), child: const Text('Database')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, RunMode.local),
+            child: const Text('Locally'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, RunMode.database),
+            child: const Text('Database'),
+          ),
         ],
       ),
     );
@@ -59,40 +67,48 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
 
   Future<void> _startLocal(BuildContext context, String folder) async {
     final Directory baseDir = Directory(folder);
-    final outputBase = Directory('${baseDir.path}${Platform.pathSeparator}sorted').path;
-    final unknownFolder = Directory('$outputBase${Platform.pathSeparator}unknown').path;
+    final outputBase = Directory(
+      '${baseDir.path}${Platform.pathSeparator}sorted',
+    ).path;
+    final unknownFolder = Directory(
+      '$outputBase${Platform.pathSeparator}unknown',
+    ).path;
 
     Map<String, String> trainingFolders = {};
     if (sortPhotos) {
       final res = await showDialog<Map<String, String>>(
         context: context,
-        builder: (_) => TrainingFoldersDialog(currentUserId: widget.currentUserId),
+        builder: (_) =>
+            TrainingFoldersDialog(currentUserId: widget.currentUserId),
       );
       if (res == null || res.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No training folders.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No training folders.')));
         return;
       }
       trainingFolders = res;
       // Save for reuse
       try {
         final prefs = await SharedPreferences.getInstance();
-        final key = (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
-          ? 'train_data_${widget.currentUserId}'
-          : 'train_data_local';
+        final key =
+            (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
+            ? 'train_data_${widget.currentUserId}'
+            : 'train_data_local';
         await prefs.setString(key, jsonEncode(trainingFolders));
       } catch (_) {}
     }
 
     // Mode "only dupliates": call sort-local without training folders
-    final resp = await ApiService.startSortLocal(
+    final resp = await ImageService.startSortLocal(
       trainingFolders: trainingFolders,
       unsortedFolder: folder,
       outputBase: outputBase,
       unknownFolder: unknownFolder,
     );
     final taskId = resp['task_id'] as String;
-    final wsUrl = ApiService.progressWsUrl(taskId);
-    final sseUri = ApiService.progressSseUri(taskId);
+    final wsUrl = ImageService.progressWsUrl(taskId);
+    final sseUri = ImageService.progressSseUri(taskId);
 
     if (!mounted) return;
     await showDialog(
@@ -103,7 +119,10 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
     // Save last sort date for this folder
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('last_sort_date_${folder}', DateTime.now().toIso8601String());
+      await prefs.setString(
+        'last_sort_date_${folder}',
+        DateTime.now().toIso8601String(),
+      );
     } catch (_) {}
     widget.onAfterTask?.call();
   }
@@ -124,8 +143,14 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
               decoration: const InputDecoration(labelText: 'user_id'),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('OK')),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+                child: const Text('OK'),
+              ),
             ],
           );
         },
@@ -138,29 +163,31 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
     if (sortPhotos) {
       final res = await showDialog<Map<String, String>>(
         context: context,
-        builder: (_) => TrainingFoldersDialog(currentUserId: widget.currentUserId),
+        builder: (_) =>
+            TrainingFoldersDialog(currentUserId: widget.currentUserId),
       );
       trainingFolders = res;
       // Save for reuse
       if (res != null && res.isNotEmpty) {
         try {
           final prefs = await SharedPreferences.getInstance();
-          final key = (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
-            ? 'train_data_${widget.currentUserId}'
-            : 'train_data_local';
+          final key =
+              (widget.currentUserId != null && widget.currentUserId!.isNotEmpty)
+              ? 'train_data_${widget.currentUserId}'
+              : 'train_data_local';
           await prefs.setString(key, jsonEncode(res));
         } catch (_) {}
       }
     }
 
-    final resp = await ApiService.startIndexDb(
+    final resp = await ImageService.startIndexDb(
       userId: userId,
       folder: folder,
       trainingFolders: trainingFolders,
     );
     final taskId = resp['task_id'] as String;
-    final wsUrl = ApiService.progressWsUrl(taskId);
-    final sseUri = ApiService.progressSseUri(taskId);
+    final wsUrl = ImageService.progressWsUrl(taskId);
+    final sseUri = ImageService.progressSseUri(taskId);
 
     if (!mounted) return;
     await showDialog(
@@ -171,7 +198,10 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
     // Save last sort date for this folder
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('last_sort_date_${folder}', DateTime.now().toIso8601String());
+      await prefs.setString(
+        'last_sort_date_${folder}',
+        DateTime.now().toIso8601String(),
+      );
     } catch (_) {}
     widget.onAfterTask?.call();
   }
@@ -179,16 +209,22 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
   Future<void> _handleAction(BuildContext context) async {
     final folder = widget.selectedFolder;
     if (folder == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('First, select a folder.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('First, select a folder.')));
       return;
     }
     // Additional verification
     if (!Directory(folder).existsSync()) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('The selected folder does not exist.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('The selected folder does not exist.')),
+      );
       return;
     }
     if (!removeDuplicates && !sortPhotos) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one option.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one option.')),
+      );
       return;
     }
 
@@ -219,12 +255,16 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
               children: [
                 FilterChip(
                   selected: removeDuplicates,
-                  onSelected: disabled ? null : (v) => setState(() => removeDuplicates = v),
+                  onSelected: disabled
+                      ? null
+                      : (v) => setState(() => removeDuplicates = v),
                   label: const Text('Delete duplicates'),
                 ),
                 FilterChip(
                   selected: sortPhotos,
-                  onSelected: disabled ? null : (v) => setState(() => sortPhotos = v),
+                  onSelected: disabled
+                      ? null
+                      : (v) => setState(() => sortPhotos = v),
                   label: const Text('Sort Images'),
                 ),
                 // optional switch for the future

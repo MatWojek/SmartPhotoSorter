@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 
 class AuthLoginCard extends StatefulWidget {
   final void Function() onSwitchToSignUp;
-  final void Function(bool loggedIn, {String? userId, String? token}) onAuthChanged;
+  final void Function(bool loggedIn, {String? userId, String? token})
+  onAuthChanged;
 
   const AuthLoginCard({
     super.key,
@@ -32,7 +33,8 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
     return emailRegex.hasMatch(v);
   }
 
-  void _showMsg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _showMsg(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _login() async {
     final input = _loginCtrl.text.trim();
@@ -43,15 +45,15 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
       return;
     }
 
-    final loginValue = _isEmail(input) ? input.toLowerCase() : input; 
+    final loginValue = _isEmail(input) ? input.toLowerCase() : input;
 
     setState(() => _loading = true);
     try {
-      final res = await ApiService.login(loginValue, pass);
+      final res = await AuthService.login(loginValue, pass);
       if (res.containsKey('access_token')) {
         final token = res['access_token'] as String;
         final userId = res['user_id'] as String?;
-        ApiService.setToken(token);
+        AuthService.setToken(token);
         _showMsg('Logged in');
         widget.onAuthChanged(true, userId: userId, token: token);
       } else {
@@ -78,16 +80,27 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
                 topLeft: Radius.circular(16),
                 bottomLeft: Radius.circular(16),
               ),
-              boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black12, offset: Offset(0, 6))],
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 12,
+                  color: Colors.black12,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Sign in', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Sign in',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _loginCtrl,
-                  decoration: const InputDecoration(labelText: 'Email or Username'),
+                  decoration: const InputDecoration(
+                    labelText: 'Email or Username',
+                  ),
                   onSubmitted: (_) => _login(),
                   textInputAction: TextInputAction.next,
                 ),
@@ -102,7 +115,10 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton(onPressed: () {}, child: const Text('Forgot your password?')),
+                  child: TextButton(
+                    onPressed: () {},
+                    child: const Text('Forgot your password?'),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -110,7 +126,11 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
                   child: ElevatedButton(
                     onPressed: _loading ? null : _login,
                     child: _loading
-                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('SIGN IN'),
                   ),
                 ),
@@ -118,7 +138,7 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
             ),
           ),
         ),
-        // Right panel – CTA to registration 
+        // Right panel – CTA to registration
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(24),
@@ -133,24 +153,40 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
                 topRight: Radius.circular(16),
                 bottomRight: Radius.circular(16),
               ),
-              boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black12, offset: Offset(0, 6))],
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 12,
+                  color: Colors.black12,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Hello, Friend!',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimary)),
+                Text(
+                  'Hello, Friend!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Enter your personal details and start journey with us',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onPrimary),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    side: BorderSide(color: Theme.of(context).colorScheme.onPrimary),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                   onPressed: widget.onSwitchToSignUp,
                   child: const Text('SIGN UP'),

@@ -21,6 +21,9 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
 
   Map<String, dynamic>? _lastEvent;
   bool _done = false;
+  bool _connecting = true;
+  bool _connectionError = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -29,6 +32,11 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
   }
 
   void _startWsOrSse(String wsUrl, Uri sseUri) {
+    setState(() {
+      _connecting = true;
+      _connectionError = false;
+      _errorMessage = null;
+    });
     try {
       _channel = IOWebSocketChannel.connect(wsUrl);
       _channel!.stream.listen(
@@ -44,20 +52,39 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
   }
 
   Future<void> _startSse(Uri sseUri) async {
-    _httpClient = http.Client();
-    final req = http.Request('GET', sseUri);
-    final resp = await _httpClient!.send(req);
-    _sseSub = resp.stream
-        .transform(const Utf8Decoder())
-        .transform(const LineSplitter())
-        .listen((line) {
-      if (line.startsWith('data: ')) {
-        final jsonStr = line.substring(6).trim();
-        _onEvent(jsonStr);
-      }
-    }, onError: (_) {
-      if (mounted) Navigator.of(context).maybePop();
-    });
+    try {
+      _httpClient = http.Client();
+      final req = http.Request('GET', sseUri);
+      final resp = await _httpClient!.send(req);
+      if (!mounted) return;
+      setState(() {
+        _connecting = false;
+        _connectionError = false;
+        _errorMessage = null;
+      });
+      _sseSub = resp.stream
+          .transform(const Utf8Decoder())
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (line.startsWith('data: ')) {
+          final jsonStr = line.substring(6).trim();
+          _onEvent(jsonStr);
+        }
+      }, onError: (_) {
+        if (!mounted) return;
+        setState(() {
+          _connectionError = true;
+          _errorMessage = 'Lost connection to progress stream.';
+        });
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connecting = false;
+        _connectionError = true;
+        _errorMessage = 'Cannot connect to progress stream. The task may still be running.';
+      });
+    }
   }
 
   void _onEvent(String data) {
@@ -65,12 +92,10 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
     setState(() {
       _lastEvent = ev;
       _done = (ev['status'] == 'done');
+      _connecting = false;
+      _connectionError = false;
+      _errorMessage = null;
     });
-    if (_done) {
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (mounted) Navigator.of(context).maybePop();
-      });
-    }
   }
 
   @override
@@ -87,7 +112,9 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
     final int current = (ev?['current'] ?? 0) as int;
     final int total = (ev?['total'] ?? 0) as int;
     final double? value = total > 0 ? current / total : null;
-    final message = ev?['message'] as String? ?? 'Processing...';
+    final message = ev?['message'] as String? ?? (_connectionError
+        ? 'Live progress is unavailable, but the operation may still be running.'
+        : 'Processing...');
     final photo = ev?['photo'] as String? ?? '';
     final dest = ev?['destination'] as String?;
     final status = ev?['status'] as String? ?? '';
@@ -101,14 +128,27 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Operation progress', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                _done ? 'Operation completed' : 'Operation progress',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 10),
-              LinearProgressIndicator(value: value),
+              LinearProgressIndicator(value: (_connectionError || _connecting) ? null : value),
               const SizedBox(height: 10),
               Align(
                 alignment: Alignment.centerLeft,
                 child: Text(message, maxLines: 2, overflow: TextOverflow.ellipsis),
               ),
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _errorMessage!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
+                  ),
+                ),
+              ],
               const SizedBox(height: 4),
               if (photo.isNotEmpty)
                 Align(

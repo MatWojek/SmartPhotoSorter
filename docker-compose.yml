@@ -23,6 +23,7 @@ services:
       - mongo
     volumes:
       - ./backend/app/storage:/app/app/storage
-      -  /home/you/Pictures:/data
+      - /home/Pictures:/data
+
 volumes:
   mongo_data:

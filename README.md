@@ -126,7 +126,7 @@ SmartPhotoSorter/
 git clone https://github.com/MatWojek/SmartPhotoSorter.git
 cd SmartPhotoSorter
 cd backend
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
@@ -162,14 +162,16 @@ flutter run -d linux    # Windows: flutter run -d windows
 ### Docker (optional)
 
 ```bash 
-docker-compose up --build
+docker-compose build backend
+docker-compose up mongo backend
+
 ```
 
 ---
 
 ## Requirements
 
- - Python 3.11+
+ - Python 3.11+ (recommended 3.11.11)
  - MongoDB
  - FastAPI + Uvicorn
  - face_recognition (dlib‑based)

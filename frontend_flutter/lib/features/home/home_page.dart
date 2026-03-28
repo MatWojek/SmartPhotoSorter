@@ -6,7 +6,9 @@ import 'widgets/person_grid.dart';
 import '../navigation/app_top_bar.dart';
 import 'widgets/sort_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/image_service.dart';
+import '../../services/person_service.dart';
 import 'widgets/photo_grid.dart';
 import 'widgets/photo_list.dart';
 import 'widgets/person_list.dart';
@@ -27,7 +29,7 @@ class _HomePageState extends State<HomePage> {
   DateTime? lastSortDate;
 
   final Set<String> selectedPhotos = {};
-  bool selectionMode = false; 
+  bool selectionMode = false;
 
   List<Person> persons = [];
   List<Map<String, dynamic>> photoResults = [];
@@ -35,11 +37,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _fetchPersons() async {
     if (currentUserId == null || currentUserId!.isEmpty) return;
-    final list = await ApiService.listPersons(currentUserId!);
+    final list = await PersonService.listPersons(currentUserId!);
     setState(() {
       persons = [
-        for (final p in list)
-          Person.fromMap(p as Map<String, dynamic>),
+        for (final p in list) Person.fromMap(p as Map<String, dynamic>),
       ];
     });
   }
@@ -72,12 +73,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _searchByPerson(String name) async {
     if (currentUserId == null || currentUserId!.isEmpty) return;
-    final res = await ApiService.searchPhotosByPerson(currentUserId!, name);
+    final res = await ImageService.searchPhotosByPerson(currentUserId!, name);
     // Deduplicate by path if available, else by photo_id
     final Map<String, Map<String, dynamic>> unique = {};
     for (final p in res) {
       final String? path = p['path'] as String?;
-      final String id = (p['photo_id'] as String?) ?? ''; 
+      final String id = (p['photo_id'] as String?) ?? '';
       final key = (path != null && path.isNotEmpty) ? 'path:$path' : 'id:$id';
       unique[key] = p;
     }
@@ -87,7 +88,10 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _applyFilters({required List<String> persons, Map<String, dynamic>? attributes}) async {
+  Future<void> _applyFilters({
+    required List<String> persons,
+    Map<String, dynamic>? attributes,
+  }) async {
     if (currentUserId == null || currentUserId!.isEmpty) return;
     if (persons.isEmpty) {
       setState(() {
@@ -98,7 +102,7 @@ class _HomePageState extends State<HomePage> {
     }
     final Map<String, Map<String, dynamic>> unique = {};
     for (final name in persons) {
-      final res = await ApiService.searchPhotosByPerson(currentUserId!, name);
+      final res = await ImageService.searchPhotosByPerson(currentUserId!, name);
       for (final p in res) {
         final String? path = p['path'] as String?;
         final String id = (p['photo_id'] as String?) ?? '';
@@ -113,17 +117,20 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _toggleSelect(String pid, bool selected) {
-  setState(() {
-    if (selected) selectedPhotos.add(pid); else selectedPhotos.remove(pid);
-    selectionMode = selectedPhotos.isNotEmpty;
-  });
+    setState(() {
+      if (selected)
+        selectedPhotos.add(pid);
+      else
+        selectedPhotos.remove(pid);
+      selectionMode = selectedPhotos.isNotEmpty;
+    });
   }
 
   Future<void> _deleteSelected() async {
     if (currentUserId == null) return;
     final ids = selectedPhotos.toList();
     if (ids.isEmpty) return;
-    await ApiService.deleteBatch(currentUserId!, ids);
+    await ImageService.deleteBatch(currentUserId!, ids);
     setState(() {
       photoResults.removeWhere((e) => selectedPhotos.contains(e['photo_id']));
       selectedPhotos.clear();
@@ -134,7 +141,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _downloadSelected() async {
     // simple: open each photo URL externally
     for (final id in selectedPhotos) {
-      final url = ApiService.photoUrl(currentUserId!, id);
+      final url = ImageService.photoUrl(currentUserId!, id);
       await downloadPhotoUrl(context, Uri.parse(url));
     }
   }
@@ -169,23 +176,34 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _moveSelectedLocal(String personName) async {
     if (selectedFolder == null || selectedFolder!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a base folder first.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a base folder first.')),
+      );
       return;
     }
     final baseDir = Directory(selectedFolder!);
-    final outputBase = Directory('${baseDir.path}${Platform.pathSeparator}sorted');
-    final destDir = Directory('${outputBase.path}${Platform.pathSeparator}$personName');
+    final outputBase = Directory(
+      '${baseDir.path}${Platform.pathSeparator}sorted',
+    );
+    final destDir = Directory(
+      '${outputBase.path}${Platform.pathSeparator}$personName',
+    );
     if (!outputBase.existsSync()) outputBase.createSync(recursive: true);
     if (!destDir.existsSync()) destDir.createSync(recursive: true);
 
     // also copy to manual train dir for future learning
     Directory manualTrainBase() {
       final home = Platform.environment['HOME'] ?? Directory.current.path;
-      final userPart = (currentUserId != null && currentUserId!.isNotEmpty) ? currentUserId! : 'local';
-      final dir = Directory('$home${Platform.pathSeparator}.smartphotosorter${Platform.pathSeparator}train_manual${Platform.pathSeparator}$userPart${Platform.pathSeparator}$personName');
+      final userPart = (currentUserId != null && currentUserId!.isNotEmpty)
+          ? currentUserId!
+          : 'local';
+      final dir = Directory(
+        '$home${Platform.pathSeparator}.smartphotosorter${Platform.pathSeparator}train_manual${Platform.pathSeparator}$userPart${Platform.pathSeparator}$personName',
+      );
       if (!dir.existsSync()) dir.createSync(recursive: true);
       return dir;
     }
+
     final manualDir = manualTrainBase();
 
     for (final id in selectedPhotos.toList()) {
@@ -209,7 +227,9 @@ class _HomePageState extends State<HomePage> {
       }
       // copy to manual train dir (keep a copy)
       try {
-        final trainCopy = File('${manualDir.path}${Platform.pathSeparator}$fileName');
+        final trainCopy = File(
+          '${manualDir.path}${Platform.pathSeparator}$fileName',
+        );
         if (!trainCopy.existsSync()) {
           await File(destPath).copy(trainCopy.path);
         }
@@ -223,13 +243,15 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       selectionMode = selectedPhotos.isNotEmpty;
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Moved to $personName')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Moved to $personName')));
   }
 
   Future<void> _reassignSelected(String personName) async {
     if (currentUserId == null) return;
     for (final id in selectedPhotos) {
-      await ApiService.reassignPhoto(currentUserId!, id, personName);
+      await ImageService.reassignPhoto(currentUserId!, id, personName);
     }
     await _applyFilters(persons: activeFilterPersons);
     setState(() {
@@ -240,7 +262,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final notLogged = !loggedIn || currentUserId == null || currentUserId!.isEmpty;
+    final notLogged =
+        !loggedIn || currentUserId == null || currentUserId!.isEmpty;
 
     if (notLogged) {
       // Logged out: allow local sorting only, with a larger drop zone
@@ -273,7 +296,8 @@ class _HomePageState extends State<HomePage> {
           userId: currentUserId,
           // search/filter remain inactive when logged out (AppTopBar already guards)
           onSearchPerson: _searchByPerson,
-          onFiltersApplied: ({required persons, attributes}) => _applyFilters(persons: persons, attributes: attributes),
+          onFiltersApplied: ({required persons, attributes}) =>
+              _applyFilters(persons: persons, attributes: attributes),
         ),
         body: Column(
           children: [
@@ -286,9 +310,9 @@ class _HomePageState extends State<HomePage> {
                   onClearSelected: () => setState(() => selectedFolder = null),
                   onFolderSelected: (path) {
                     setState(() => selectedFolder = path);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Start: $path')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Start: $path')));
                   },
                 ),
               ),
@@ -311,7 +335,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     // Logged in: full UI as before
-    final showPhotos = photoResults.isNotEmpty && (currentUserId != null && currentUserId!.isNotEmpty);
+    final showPhotos =
+        photoResults.isNotEmpty &&
+        (currentUserId != null && currentUserId!.isNotEmpty);
 
     return Scaffold(
       appBar: AppTopBar(
@@ -328,8 +354,7 @@ class _HomePageState extends State<HomePage> {
             await prefs.remove('current_user_id');
             currentUserId = null;
             // clear token on logout
-            ApiService.setToken(null);
-            ApiService.setToken(null);
+            AuthService.setToken(null);
           }
           if (isLoggedIn) {
             await _fetchPersons();
@@ -344,7 +369,8 @@ class _HomePageState extends State<HomePage> {
         },
         userId: currentUserId,
         onSearchPerson: _searchByPerson,
-        onFiltersApplied: ({required persons, attributes}) => _applyFilters(persons: persons, attributes: attributes),
+        onFiltersApplied: ({required persons, attributes}) =>
+            _applyFilters(persons: persons, attributes: attributes),
       ),
       body: Column(
         children: [
@@ -353,9 +379,9 @@ class _HomePageState extends State<HomePage> {
             onClearSelected: () => setState(() => selectedFolder = null),
             onFolderSelected: (path) {
               setState(() => selectedFolder = path);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Start: $path')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('Start: $path')));
             },
           ),
           if (selectedFolder != null)
@@ -366,9 +392,15 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Selected folder: $selectedFolder', style: Theme.of(context).textTheme.bodyMedium),
+                    Text(
+                      'Selected folder: $selectedFolder',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                     if (lastSortDate != null)
-                      Text('Sorted at: ${lastSortDate!.toLocal()}', style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        'Sorted at: ${lastSortDate!.toLocal()}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                   ],
                 ),
               ),
@@ -384,60 +416,115 @@ class _HomePageState extends State<HomePage> {
             },
           ),
           const SizedBox(height: 8),
-          if (selectionMode) Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                Text('${selectedPhotos.length} selected'),
-                const Spacer(),
-                TextButton.icon(onPressed: _deleteSelected, icon: const Icon(Icons.delete), label: const Text('Delete')),
-                const SizedBox(width: 8),
-                TextButton.icon(onPressed: _downloadSelected, icon: const Icon(Icons.download), label: const Text('Download')),
-                const SizedBox(width: 8),
-                TextButton.icon(onPressed: _revealSelected, icon: const Icon(Icons.folder_open), label: const Text('Reveal')),
-                const SizedBox(width: 8),
-                TextButton.icon(onPressed: _copySelectedPaths, icon: const Icon(Icons.content_copy), label: const Text('Copy paths')),
-                const SizedBox(width: 8),
-                // Local move to person folder
-                PopupMenuButton<String>(
-                  tooltip: 'Move to person (local)'
-                  , itemBuilder: (_) {
-                    // offer persons list if available, else allow manual input
-                    final items = persons.map((p) => PopupMenuItem(value: p.name, child: Text(p.name))).toList();
-                    items.add(const PopupMenuItem(value: '__manual__', child: Text('Other…')));
-                    return items;
-                  },
-                  onSelected: (name) async {
-                    if (name == '__manual__') {
-                      final ctrl = TextEditingController();
-                      final v = await showDialog<String>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Person name'),
-                          content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'Name')),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                            FilledButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('Move')),
-                          ],
+          if (selectionMode)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Text('${selectedPhotos.length} selected'),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _deleteSelected,
+                    icon: const Icon(Icons.delete),
+                    label: const Text('Delete'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _downloadSelected,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _revealSelected,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Reveal'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _copySelectedPaths,
+                    icon: const Icon(Icons.content_copy),
+                    label: const Text('Copy paths'),
+                  ),
+                  const SizedBox(width: 8),
+                  // Local move to person folder
+                  PopupMenuButton<String>(
+                    tooltip: 'Move to person (local)',
+                    itemBuilder: (_) {
+                      // offer persons list if available, else allow manual input
+                      final items = persons
+                          .map(
+                            (p) => PopupMenuItem(
+                              value: p.name,
+                              child: Text(p.name),
+                            ),
+                          )
+                          .toList();
+                      items.add(
+                        const PopupMenuItem(
+                          value: '__manual__',
+                          child: Text('Other…'),
                         ),
                       );
-                      if (v != null && v.isNotEmpty) await _moveSelectedLocal(v);
-                    } else {
-                      await _moveSelectedLocal(name);
-                    }
-                  },
-                  child: TextButton.icon(onPressed: null, icon: const Icon(Icons.drive_file_move), label: const Text('Move')),
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
-                  tooltip: 'Reassign to person',
-                  itemBuilder: (_) => persons.map((p) => PopupMenuItem(value: p.name, child: Text(p.name))).toList(),
-                  onSelected: (name) => _reassignSelected(name),
-                  child: TextButton.icon(onPressed: null, icon: const Icon(Icons.swap_horiz), label: const Text('Reassign')),
-                ),
-              ],
+                      return items;
+                    },
+                    onSelected: (name) async {
+                      if (name == '__manual__') {
+                        final ctrl = TextEditingController();
+                        final v = await showDialog<String>(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Person name'),
+                            content: TextField(
+                              controller: ctrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.pop(context, ctrl.text.trim()),
+                                child: const Text('Move'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (v != null && v.isNotEmpty)
+                          await _moveSelectedLocal(v);
+                      } else {
+                        await _moveSelectedLocal(name);
+                      }
+                    },
+                    child: TextButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.drive_file_move),
+                      label: const Text('Move'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  PopupMenuButton<String>(
+                    tooltip: 'Reassign to person',
+                    itemBuilder: (_) => persons
+                        .map(
+                          (p) =>
+                              PopupMenuItem(value: p.name, child: Text(p.name)),
+                        )
+                        .toList(),
+                    onSelected: (name) => _reassignSelected(name),
+                    child: TextButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('Reassign'),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           const Divider(height: 32),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -463,36 +550,55 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: showPhotos
                 ? (listMode
-                  ? PhotoList(
-                      userId: currentUserId!,
-                      photos: photoResults,
-                      selected: selectedPhotos,
-                      onSelectChanged: _toggleSelect,
-                      onDeleted: (pid) async => setState(() => photoResults.removeWhere((e) => e['photo_id'] == pid)),
-                    )
-                  : PhotoGrid(
-                      userId: currentUserId!,
-                      photos: photoResults,
-                      selected: selectedPhotos,
-                      onSelectChanged: _toggleSelect,
-                      onDeleted: (pid) async => setState(() => photoResults.removeWhere((e) => e['photo_id'] == pid)),
-                    ))
-              : (listMode
-                  ? PersonList(persons: persons, onDeleteFolder: (name) async {
-                      if (currentUserId != null && currentUserId!.isNotEmpty) {
-                        final ok = await ApiService.deletePersonFolder(currentUserId!, name);
-                        if (ok) await _fetchPersons();
-                      }
-                    })
-                  : PersonGrid(
-                      persons: persons,
-                      onDeleteFolder: (name) async {
-                        if (currentUserId != null && currentUserId!.isNotEmpty) {
-                          final ok = await ApiService.deletePersonFolder(currentUserId!, name);
-                          if (ok) await _fetchPersons();
-                        }
-                      },
-                    )),
+                      ? PhotoList(
+                          userId: currentUserId!,
+                          photos: photoResults,
+                          selected: selectedPhotos,
+                          onSelectChanged: _toggleSelect,
+                          onDeleted: (pid) async => setState(
+                            () => photoResults.removeWhere(
+                              (e) => e['photo_id'] == pid,
+                            ),
+                          ),
+                        )
+                      : PhotoGrid(
+                          userId: currentUserId!,
+                          photos: photoResults,
+                          selected: selectedPhotos,
+                          onSelectChanged: _toggleSelect,
+                          onDeleted: (pid) async => setState(
+                            () => photoResults.removeWhere(
+                              (e) => e['photo_id'] == pid,
+                            ),
+                          ),
+                        ))
+                : (listMode
+                      ? PersonList(
+                          persons: persons,
+                          onDeleteFolder: (name) async {
+                            if (currentUserId != null &&
+                                currentUserId!.isNotEmpty) {
+                              final ok = await PersonService.deletePersonFolder(
+                                currentUserId!,
+                                name,
+                              );
+                              if (ok) await _fetchPersons();
+                            }
+                          },
+                        )
+                      : PersonGrid(
+                          persons: persons,
+                          onDeleteFolder: (name) async {
+                            if (currentUserId != null &&
+                                currentUserId!.isNotEmpty) {
+                              final ok = await PersonService.deletePersonFolder(
+                                currentUserId!,
+                                name,
+                              );
+                              if (ok) await _fetchPersons();
+                            }
+                          },
+                        )),
           ),
         ],
       ),

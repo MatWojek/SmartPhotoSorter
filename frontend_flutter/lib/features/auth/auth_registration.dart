@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 
 class AuthRegistrationCard extends StatefulWidget {
   final void Function() onSwitchToSignIn;
-  final void Function(bool loggedIn, {String? userId, String? token}) onAuthChanged;
+  final void Function(bool loggedIn, {String? userId, String? token})
+  onAuthChanged;
 
   const AuthRegistrationCard({
     super.key,
@@ -18,7 +19,7 @@ class AuthRegistrationCard extends StatefulWidget {
 class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
   final _firstNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
-  final _usernameCtrl = TextEditingController(); 
+  final _usernameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _pass2Ctrl = TextEditingController();
@@ -36,55 +37,63 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
     super.dispose();
   }
 
-  void _showMsg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _showMsg(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _register() async {
-  final email = _emailCtrl.text.trim();
-  final pass = _passCtrl.text;
-  final pass2 = _pass2Ctrl.text;
-  final firstName = _firstNameCtrl.text.trim();
-  final lastName = _lastNameCtrl.text.trim();
-  final username = _usernameCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
+    final pass2 = _pass2Ctrl.text;
+    final firstName = _firstNameCtrl.text.trim();
+    final lastName = _lastNameCtrl.text.trim();
+    final username = _usernameCtrl.text.trim();
 
-  if ([firstName, lastName, username, email, pass, pass2].any((v) => v.isEmpty)) {
-    _showMsg('Please fill in all fields');
-    return;
-  }
-  if (pass2 != pass) {
-    _showMsg('Passwords is not the same');
-    return;
-  }
-
-  setState(() => _loading = true);
-  try {
-    final res = await ApiService.register(
-      firstName: firstName,
-      lastName: lastName,
-      username: username,
-      email: email,
-      password: pass,
-    );
-
-    if (res.containsKey('user_id')) {
-      _userId = res['user_id'] as String?;
-      final loginRes = await ApiService.login(email, pass);
-      if (loginRes.containsKey('access_token')) {
-        final token = loginRes['access_token'] as String;
-        ApiService.setToken(token);
-        widget.onAuthChanged(true, userId: _userId, token: token);
-        _showMsg('Registered and logged in');
-      } else {
-        _showMsg('Registered but login failed: ${loginRes.toString()}');
-      }
-    } else {
-      _showMsg(res.toString());
+    if ([
+      firstName,
+      lastName,
+      username,
+      email,
+      pass,
+      pass2,
+    ].any((v) => v.isEmpty)) {
+      _showMsg('Please fill in all fields');
+      return;
     }
-  } catch (e) {
-    _showMsg('Registration error: $e');
-  } finally {
-    if (mounted) setState(() => _loading = false);
+    if (pass2 != pass) {
+      _showMsg('Passwords is not the same');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final res = await AuthService.register(
+        firstName: firstName,
+        lastName: lastName,
+        username: username,
+        email: email,
+        password: pass,
+      );
+
+      if (res.containsKey('user_id')) {
+        _userId = res['user_id'] as String?;
+        final loginRes = await AuthService.login(email, pass);
+        if (loginRes.containsKey('access_token')) {
+          final token = loginRes['access_token'] as String;
+          AuthService.setToken(token);
+          widget.onAuthChanged(true, userId: _userId, token: token);
+          _showMsg('Registered and logged in');
+        } else {
+          _showMsg('Registered but login failed: ${loginRes.toString()}');
+        }
+      } else {
+        _showMsg(res.toString());
+      }
+    } catch (e) {
+      _showMsg('Registration error: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -105,21 +114,40 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
                 topLeft: Radius.circular(16),
                 bottomLeft: Radius.circular(16),
               ),
-              boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black12, offset: Offset(0, 6))],
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 12,
+                  color: Colors.black12,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Welcome Back!',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onPrimary)),
+                Text(
+                  'Welcome Back!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                Text('To keep connected please login with your personal info',
-                    textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.onPrimary)),
+                Text(
+                  'To keep connected please login with your personal info',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
                 const SizedBox(height: 16),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                    side: BorderSide(color: Theme.of(context).colorScheme.onPrimary),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                   onPressed: widget.onSwitchToSignIn,
                   child: const Text('SIGN IN'),
@@ -128,7 +156,7 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
             ),
           ),
         ),
-        // Right panel – registration 
+        // Right panel – registration
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(24),
@@ -138,38 +166,74 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
                 topRight: Radius.circular(16),
                 bottomRight: Radius.circular(16),
               ),
-              boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black12, offset: Offset(0, 6))],
+              boxShadow: const [
+                BoxShadow(
+                  blurRadius: 12,
+                  color: Colors.black12,
+                  offset: Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Create account', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Create account',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 16),
-                TextField(controller: _firstNameCtrl, decoration: const InputDecoration(labelText: 'First Name'), textInputAction: TextInputAction.next),
+                TextField(
+                  controller: _firstNameCtrl,
+                  decoration: const InputDecoration(labelText: 'First Name'),
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _lastNameCtrl, decoration: const InputDecoration(labelText: 'Last Name'), textInputAction: TextInputAction.next),
+                TextField(
+                  controller: _lastNameCtrl,
+                  decoration: const InputDecoration(labelText: 'Last Name'),
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _usernameCtrl, decoration: const InputDecoration(labelText: 'Username'), textInputAction: TextInputAction.next),
+                TextField(
+                  controller: _usernameCtrl,
+                  decoration: const InputDecoration(labelText: 'Username'),
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email'), textInputAction: TextInputAction.next),
+                TextField(
+                  controller: _emailCtrl,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
-                TextField(controller: _passCtrl, decoration: const InputDecoration(labelText: 'Password'), obscureText: true, textInputAction: TextInputAction.next),
+                TextField(
+                  controller: _passCtrl,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  obscureText: true,
+                  textInputAction: TextInputAction.next,
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _pass2Ctrl,
-                  decoration: const InputDecoration(labelText: 'Confirm password'),
+                  decoration: const InputDecoration(
+                    labelText: 'Confirm password',
+                  ),
                   obscureText: true,
                   onSubmitted: (_) => _register(),
                   textInputAction: TextInputAction.done,
                 ),
                 const SizedBox(height: 16),
-                
+
                 SizedBox(
                   width: 160,
                   child: ElevatedButton(
                     onPressed: _loading ? null : _register,
                     child: _loading
-                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('SIGN UP'),
                   ),
                 ),
