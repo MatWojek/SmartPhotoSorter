@@ -15,12 +15,26 @@ router = APIRouter(prefix="/ml", tags=["ml"])
 # per-task progress queues + owning loop for thread-safe publishing
 _TASKS: Dict[str, dict] = {}
 
+
+def _get_task(task_id: str) -> Optional[dict]:
+    return _TASKS.get(task_id)
+
+
+def _maybe_cleanup(task_id: str) -> None:
+    task = _get_task(task_id)
+    if not task:
+        return
+    if task.get("done") and (task.get("active", 0) <= 0):
+        _TASKS.pop(task_id, None)
+
 def publish(task_id: str, event: dict):
-    task = _TASKS.get(task_id)
+    task = _get_task(task_id)
     if not task:
         return
     q: asyncio.Queue = task["queue"]
     loop: asyncio.AbstractEventLoop = task["loop"]
+    if event.get("status") == "done":
+        task["done"] = True
     # Thread-safe enqueue from background thread
     loop.call_soon_threadsafe(q.put_nowait, event)
 
@@ -30,6 +44,9 @@ class SortLocalRequest(BaseModel):
     output_base: str
     unknown_folder: str
     user_id: Optional[str] = None
+    remove_duplicates: bool = True
+    sort_photos: bool = True
+    match_threshold: float = 0.35
 
 class IndexDbRequest(BaseModel):
     user_id: str
@@ -42,7 +59,7 @@ async def sort_local(req: SortLocalRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
-    _TASKS[task_id] = {"queue": q, "loop": loop}
+    _TASKS[task_id] = {"queue": q, "loop": loop, "active": 0, "done": False}
 
     def progress_cb(ev: dict):
         ev["task_id"] = task_id
@@ -53,7 +70,16 @@ async def sort_local(req: SortLocalRequest, background_tasks: BackgroundTasks):
         sorter.load_from_db(req.user_id)
 
     def sort_run():
-        summary = sorter.sort_folder(req.unsorted_folder, req.output_base, req.unknown_folder, progress_cb, user_id=req.user_id)
+        summary = sorter.sort_folder(
+            req.unsorted_folder,
+            req.output_base,
+            req.unknown_folder,
+            progress_cb,
+            user_id=req.user_id,
+            remove_duplicates=req.remove_duplicates,
+            sort_photos=req.sort_photos,
+            match_threshold=req.match_threshold,
+        )
         publish(task_id, {"status": "done", "summary": summary, "task_id": task_id})
 
     def train_update_run():
@@ -73,7 +99,7 @@ async def index_db(req: IndexDbRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     q: asyncio.Queue = asyncio.Queue()
-    _TASKS[task_id] = {"queue": q, "loop": loop}
+    _TASKS[task_id] = {"queue": q, "loop": loop, "active": 0, "done": False}
 
     def run():
         if req.training_folders:
@@ -87,12 +113,13 @@ async def index_db(req: IndexDbRequest, background_tasks: BackgroundTasks):
 @router.websocket("/progress/{task_id}")
 async def ws_progress(ws: WebSocket, task_id: str):
     await ws.accept()
-    task = _TASKS.get(task_id)
+    task = _get_task(task_id)
     q = task["queue"] if task else None
     if not q:
         await ws.send_json({"error": "invalid_task"})
         await ws.close()
         return
+    task["active"] = int(task.get("active", 0)) + 1
     try:
         while True:
             ev = await q.get()
@@ -100,22 +127,28 @@ async def ws_progress(ws: WebSocket, task_id: str):
             if ev.get("status") == "done":
                 break
     finally:
-        _TASKS.pop(task_id, None)
+        task["active"] = int(task.get("active", 0)) - 1
+        _maybe_cleanup(task_id)
         await ws.close()
 
 @router.get("/progress-sse/{task_id}")
 async def progress_sse(task_id: str):
-    task = _TASKS.get(task_id)
+    task = _get_task(task_id)
     q = task["queue"] if task else None
 
     async def event_gen():
         if not q:
             yield "event: error\ndata: {\"error\":\"invalid_task\"}\n\n"
             return
-        while True:
-            ev = await q.get()
-            yield f"data: {json.dumps(ev)}\n\n"
-            if ev.get("status") == "done":
-                break
+        task["active"] = int(task.get("active", 0)) + 1
+        try:
+            while True:
+                ev = await q.get()
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("status") == "done":
+                    break
+        finally:
+            task["active"] = int(task.get("active", 0)) - 1
+            _maybe_cleanup(task_id)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

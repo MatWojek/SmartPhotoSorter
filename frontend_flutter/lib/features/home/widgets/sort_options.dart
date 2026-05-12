@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../services/image_service.dart';
+import '../../../services/local_sort_service.dart';
 import 'progress_overlay.dart';
 import 'training_folders_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +32,18 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
   bool sortPhotos = false;
   bool manualCorrections = false; // future extension
   static const _userIdPrefKey = 'current_user_id';
+
+  void _showError(BuildContext context, String msg) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
 
   Future<String?> _loadUserIdFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -99,13 +112,54 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       } catch (_) {}
     }
 
+    // Logged-out local mode: run without backend (no HTTP), by spawning a local Python process.
+    if (widget.forceLocalOnly) {
+      LocalSortRun? run;
+      try {
+        run = await LocalSortService.start(
+          trainingFolders: trainingFolders,
+          unsortedFolder: folder,
+          outputBase: outputBase,
+          unknownFolder: unknownFolder,
+          removeDuplicates: removeDuplicates,
+          sortPhotos: sortPhotos,
+        );
+      } catch (e) {
+        if (mounted) {
+          _showError(
+            context,
+            'Cannot start local sorter. Ensure Python deps are installed (backend venv) or run backend and set API_BASE_URL correctly.',
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        barrierDismissible: false,
+        context: context,
+        builder: (_) => ProgressOverlay.stream(events: run!.events),
+      );
+
+      widget.onAfterTask?.call();
+      return;
+    }
+
     // Mode "only dupliates": call sort-local without training folders
-    final resp = await ImageService.startSortLocal(
-      trainingFolders: trainingFolders,
-      unsortedFolder: folder,
-      outputBase: outputBase,
-      unknownFolder: unknownFolder,
-    );
+    Map<String, dynamic> resp;
+    try {
+      resp = await ImageService.startSortLocal(
+        trainingFolders: trainingFolders,
+        unsortedFolder: folder,
+        outputBase: outputBase,
+        unknownFolder: unknownFolder,
+        removeDuplicates: removeDuplicates,
+        sortPhotos: sortPhotos,
+      );
+    } catch (e) {
+      if (mounted) _showError(context, 'Cannot start operation. Check backend connection and endpoint URL.');
+      return;
+    }
     final taskId = resp['task_id'] as String;
     final wsUrl = ImageService.progressWsUrl(taskId);
     final sseUri = ImageService.progressSseUri(taskId);
@@ -180,11 +234,17 @@ class _SortOptionsPanelState extends State<SortOptionsPanel> {
       }
     }
 
-    final resp = await ImageService.startIndexDb(
-      userId: userId,
-      folder: folder,
-      trainingFolders: trainingFolders,
-    );
+    Map<String, dynamic> resp;
+    try {
+      resp = await ImageService.startIndexDb(
+        userId: userId,
+        folder: folder,
+        trainingFolders: trainingFolders,
+      );
+    } catch (e) {
+      if (mounted) _showError(context, 'Cannot start DB indexing. Check backend connection and login.');
+      return;
+    }
     final taskId = resp['task_id'] as String;
     final wsUrl = ImageService.progressWsUrl(taskId);
     final sseUri = ImageService.progressSseUri(taskId);

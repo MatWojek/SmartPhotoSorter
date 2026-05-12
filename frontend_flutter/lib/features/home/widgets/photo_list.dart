@@ -24,6 +24,8 @@ class PhotoList extends StatefulWidget {
 }
 
 class _PhotoListState extends State<PhotoList> {
+  final ScrollController _scrollCtrl = ScrollController();
+
   Future<void> _moveToCollection(String photoId) async {
     // Fetch persons
     final persons = await PersonService.listPersons(widget.userId);
@@ -108,6 +110,7 @@ class _PhotoListState extends State<PhotoList> {
 
   @override
   void dispose() {
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -116,7 +119,9 @@ class _PhotoListState extends State<PhotoList> {
     final photos = _uniqueByPhotoId(widget.photos);
     if (photos.isEmpty) return const Center(child: Text('No photos'));
     return Scrollbar(
+      controller: _scrollCtrl,
       child: ListView.separated(
+        controller: _scrollCtrl,
         itemCount: photos.length,
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (_, i) {

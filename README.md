@@ -159,12 +159,22 @@ flutter pub get
 flutter run -d linux    # Windows: flutter run -d windows
 ```
 
+Notes:
+- Registration/login requires the backend to be reachable at `API_BASE_URL`.
+- When logged out on desktop (Linux/macOS/Windows), "local sorting" can run without HTTP by spawning a local Python process (see `backend/tools/local_sort_cli.py`).
+
 ### Docker (optional)
 
 ```bash 
-docker-compose build backend
-docker-compose up mongo backend
+docker compose build backend
+docker compose up mongo backend
 
+```
+
+If you get "address already in use", override host ports:
+
+```bash
+BACKEND_PORT=8001 MONGO_PORT=27019 docker compose up mongo backend
 ```
 
 ---

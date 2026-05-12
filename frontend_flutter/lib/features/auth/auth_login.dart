@@ -60,7 +60,7 @@ class _AuthLoginCardState extends State<AuthLoginCard> {
         _showMsg(res.toString());
       }
     } catch (e) {
-      _showMsg('Login error');
+      _showMsg('Login failed. API: ${AuthService.baseUrl}. Error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

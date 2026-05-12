@@ -76,20 +76,24 @@ class _AuthRegistrationCardState extends State<AuthRegistrationCard> {
 
       if (res.containsKey('user_id')) {
         _userId = res['user_id'] as String?;
-        final loginRes = await AuthService.login(email, pass);
-        if (loginRes.containsKey('access_token')) {
-          final token = loginRes['access_token'] as String;
-          AuthService.setToken(token);
-          widget.onAuthChanged(true, userId: _userId, token: token);
-          _showMsg('Registered and logged in');
-        } else {
-          _showMsg('Registered but login failed: ${loginRes.toString()}');
+        try {
+          final loginRes = await AuthService.login(email, pass);
+          if (loginRes.containsKey('access_token')) {
+            final token = loginRes['access_token'] as String;
+            AuthService.setToken(token);
+            widget.onAuthChanged(true, userId: _userId, token: token);
+            _showMsg('Registered and logged in');
+          } else {
+            _showMsg('Registered but login failed: ${loginRes.toString()}');
+          }
+        } catch (e) {
+          _showMsg('Registered, but cannot login. API: ${AuthService.baseUrl}. Error: $e');
         }
       } else {
         _showMsg(res.toString());
       }
     } catch (e) {
-      _showMsg('Registration error: $e');
+      _showMsg('Registration failed. API: ${AuthService.baseUrl}. Error: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

@@ -24,6 +24,8 @@ class PhotoGrid extends StatefulWidget {
 }
 
 class _PhotoGridState extends State<PhotoGrid> {
+  final ScrollController _scrollCtrl = ScrollController();
+
   Future<void> _moveToCollection(String photoId) async {
     final persons = await PersonService.listPersons(widget.userId);
     String? selectedPerson;
@@ -107,6 +109,7 @@ class _PhotoGridState extends State<PhotoGrid> {
 
   @override
   void dispose() {
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -117,8 +120,10 @@ class _PhotoGridState extends State<PhotoGrid> {
       return const Center(child: Text('No photos for the selected criteria'));
     }
     return Scrollbar(
+      controller: _scrollCtrl,
       thumbVisibility: true,
       child: GridView.builder(
+        controller: _scrollCtrl,
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,

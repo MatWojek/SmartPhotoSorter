@@ -4,8 +4,12 @@ from pymongo import MongoClient
 
 def _resolve_mongo_client() -> MongoClient:
 	"""
-	Resolve a working MongoDB connection by trying environment-provided URL first,
-	then sensible local fallbacks (Docker Compose mapping to 27018, then no-auth localhost).
+	Resolve a MongoDB client by trying environment-provided URL first,
+	then sensible local fallbacks.
+
+	Important:
+	- Do NOT hard-fail during module import if Mongo is temporarily unavailable.
+	- Let operations fail with a clear runtime error instead of crashing the API.
 	"""
 	candidates = []
 	env_url = os.getenv("MONGO_URL")
@@ -21,24 +25,16 @@ def _resolve_mongo_client() -> MongoClient:
 		"mongodb://localhost:27017",
 	])
 
-	last_error: Exception | None = None
 	for url in candidates:
 		try:
+			# Lazy client: do not ping here to avoid crashing API on startup.
 			client = MongoClient(url, serverSelectionTimeoutMS=2000)
-			# Verify credentials/connection
-			client.admin.command("ping")
-			# print only minimal info to avoid leaking creds
-			print(f"[mongodb] Connected: {client.HOST}:{client.PORT}")
 			return client
-		except Exception as e:
-			last_error = e
+		except Exception:
 			continue
 
-	# If all attempts fail, raise last error for visibility
-	if last_error:
-		raise last_error
-	# Fallback (should not reach here)
-	return MongoClient()
+	# Last-resort fallback
+	return MongoClient(serverSelectionTimeoutMS=2000)
 
 
 client = _resolve_mongo_client()

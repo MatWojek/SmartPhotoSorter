@@ -23,6 +23,18 @@ class _FolderDropZoneState extends State<FolderDropZone> {
   bool _dragging = false;
   String? _defaultFolder;
 
+  void _showMsg(BuildContext context, String msg) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -56,15 +68,13 @@ class _FolderDropZoneState extends State<FolderDropZone> {
   Future<void> _validateAndSelect(BuildContext context, String path) async {
     final ok = await _folderHasImages(path);
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('The folder does not contain supported photos (jpg, png, bmp, webp, itp.).')),
+      _showMsg(
+        context,
+        'The folder does not contain supported photos (jpg, png, bmp, webp, etc.).',
       );
       return;
     }
     widget.onFolderSelected?.call(path);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Selected folder: $path')),
-    );
   }
 
   Future<void> _pickDirectory(BuildContext context) async {
@@ -82,9 +92,7 @@ class _FolderDropZoneState extends State<FolderDropZone> {
       orElse: () => '',
     );
     if (dir.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drop folder (not file)')),
-      );
+      _showMsg(context, 'Drop a folder (not a file).');
       return;
     }
     _validateAndSelect(context, dir);
@@ -93,6 +101,8 @@ class _FolderDropZoneState extends State<FolderDropZone> {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
+    final hasSelected =
+        widget.selectedPath != null && widget.selectedPath!.trim().isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -105,7 +115,7 @@ class _FolderDropZoneState extends State<FolderDropZone> {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          height: 110,
+          height: hasSelected ? 112 : 90,
           width: double.infinity,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
@@ -120,23 +130,34 @@ class _FolderDropZoneState extends State<FolderDropZone> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.drive_folder_upload, size: 30, color: color),
+                  Icon(Icons.drive_folder_upload, size: 26, color: color),
                   const SizedBox(height: 8),
-                  if (widget.selectedPath != null) ...[
-                    const SizedBox(height: 10),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 820),
-                      child: Chip(
-                        avatar: const Icon(Icons.folder, size: 18),
-                        label: Tooltip(
-                          message: widget.selectedPath!,
-                          child: Text(widget.selectedPath!, overflow: TextOverflow.ellipsis, maxLines: 1),
-                        ),
-                        deleteIcon: const Icon(Icons.close),
-                        onDeleted: widget.onClearSelected,
-                      ),
+                  if (hasSelected)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxChipWidth =
+                            (constraints.maxWidth - 24).clamp(0, 820).toDouble();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxChipWidth),
+                            child: Chip(
+                              avatar: const Icon(Icons.folder, size: 18),
+                              label: Tooltip(
+                                message: widget.selectedPath!,
+                                child: Text(
+                                  widget.selectedPath!,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              deleteIcon: const Icon(Icons.close),
+                              onDeleted: widget.onClearSelected,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ],
                 ],
               ),
             ),

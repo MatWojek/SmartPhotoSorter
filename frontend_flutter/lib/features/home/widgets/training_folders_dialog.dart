@@ -14,9 +14,11 @@ class TrainingFoldersDialog extends StatefulWidget {
 class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
   final List<MapEntry<String, String>> _pairs = [];
   String? _selectedFolder;
+  final ScrollController _scrollCtrl = ScrollController();
 
   @override
   void dispose() {
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -155,15 +157,22 @@ class _TrainingFoldersDialogState extends State<TrainingFoldersDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final contentWidth = (screen.width * 0.92);
+    final contentHeight = (screen.height * 0.65);
+    final effectiveWidth = contentWidth > 520 ? 520.0 : contentWidth;
+
     return AlertDialog(
       title: const Text('Training folders'),
       content: SizedBox(
-        width: 520,
+        width: effectiveWidth,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 420),
+          constraints: BoxConstraints(maxHeight: contentHeight > 420 ? 420 : contentHeight),
           child: Scrollbar(
+            controller: _scrollCtrl,
             thumbVisibility: true,
             child: SingleChildScrollView(
+              controller: _scrollCtrl,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

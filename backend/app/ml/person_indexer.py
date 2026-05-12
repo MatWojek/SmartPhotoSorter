@@ -71,8 +71,11 @@ class PersonIndexer:
                 except Exception:
                     continue
 
-                name = self.sorter._match_person(emb)
+                match = self.sorter._match_person_details(emb)
+                name = match.get("name")
                 person_name = name if name else "Unknown"
+                match_confidence = match.get("confidence", 0.0)
+                match_distance = match.get("distance")
 
                 # hair and eye color extraction
                 if person_name != "Unknown":
@@ -88,7 +91,9 @@ class PersonIndexer:
                 face_entries.append({
                     "person_name": person_name,
                     "person_id": None,  
-                    "embedding": emb.tolist()
+                    "embedding": emb.tolist(),
+                    "match_confidence": match_confidence,
+                    "match_distance": match_distance,
                 })
 
             if not face_entries:

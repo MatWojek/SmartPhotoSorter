@@ -1,6 +1,7 @@
 import 'api_service.dart';
 
 class AuthService {
+  static String get baseUrl => ApiService.baseUrl;
   static void setToken(String? token) => ApiService.setToken(token);
 
   static Future<Map<String, dynamic>> register({

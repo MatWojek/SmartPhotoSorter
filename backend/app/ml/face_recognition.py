@@ -101,6 +101,16 @@ class FaceSorter:
         self.duplicate_hashes: set[str] = set()
         self.image_embeddings: List[np.ndarray] = []
 
+    def _mean_matrix(self) -> tuple[list[str], Optional[np.ndarray]]:
+        if not self.person_means:
+            return [], None
+        names = list(self.person_means.keys())
+        try:
+            mat = np.stack([self.person_means[n] for n in names], axis=0)
+        except Exception:
+            return [], None
+        return names, mat
+
     def load_from_db(self, user_id: str) -> None:
         """Load existing embeddings for a `user_id` from the DB into memory."""
         from app.db.mongodb import persons_collection
@@ -447,20 +457,58 @@ class FaceSorter:
         return False
 
     def _match_person(self, emb: np.ndarray, threshold: float = 0.35) -> Optional[str]:
-        best_name = None
-        best_dist = float("inf")
+        details = self._match_person_details(emb, threshold=threshold)
+        return details["name"]
 
-        for name, embeds in self.person_embeds.items():
-            dists = face_distance(embeds, emb)
-            dist = float(np.min(dists))
+    def _match_person_details(self, emb: np.ndarray, threshold: float = 0.35) -> dict:
+        """Return best match details.
 
-            if dist < best_dist:
-                best_dist = dist
-                best_name = name
+        Output format:
+        - name: matched person name or None
+        - distance: float (lower is better)
+        - confidence: float in [0..100]
+        - second_distance: float|None (optional)
+        """
+        names, means = self._mean_matrix()
+        if means is None or not names:
+            return {"name": None, "distance": None, "confidence": 0.0, "second_distance": None}
 
-        if best_name and best_dist <= threshold:
-            return best_name
-        return None
+        # L2 distance on normalized embeddings
+        try:
+            dists = np.linalg.norm(means - emb, axis=1)
+        except Exception:
+            return {"name": None, "distance": None, "confidence": 0.0, "second_distance": None}
+
+        best_idx = int(np.argmin(dists))
+        best_dist = float(dists[best_idx])
+        second_dist: Optional[float] = None
+        if len(dists) > 1:
+            # second smallest without fully sorting
+            second_dist = float(np.partition(dists, 1)[1])
+
+        if best_dist > threshold:
+            return {
+                "name": None,
+                "distance": best_dist,
+                "confidence": 0.0,
+                "second_distance": second_dist,
+            }
+
+        # Map distance to an interpretable 0..100 confidence.
+        # NOTE: this is a heuristic calibration tied to `threshold`.
+        base = max(0.0, 1.0 - (best_dist / threshold))
+        sep = 0.0
+        if second_dist is not None:
+            sep = max(0.0, min(1.0, (second_dist - best_dist) / threshold))
+        conf = base * (0.7 + 0.3 * sep)
+        conf_pct = float(np.clip(conf * 100.0, 0.0, 100.0))
+
+        return {
+            "name": names[best_idx],
+            "distance": best_dist,
+            "confidence": round(conf_pct, 1),
+            "second_distance": second_dist,
+        }
     
     def sort_folder(
         self,
@@ -469,32 +517,59 @@ class FaceSorter:
         unknown_folder: str,
         progress: Optional[ProgressCb] = None,
         user_id: Optional[str] = None,
+        remove_duplicates: bool = True,
+        sort_photos: bool = True,
+        match_threshold: float = 0.35,
     ) -> Dict[str, int]:
 
         paths = list_images(unsorted_folder)
         total = len(paths)
 
         moved_known = moved_unknown = skipped = removed_dups = 0
+        match_confidences: list[float] = []
 
-        os.makedirs(output_base, exist_ok=True)
-        os.makedirs(unknown_folder, exist_ok=True)
+        if sort_photos:
+            os.makedirs(output_base, exist_ok=True)
+            os.makedirs(unknown_folder, exist_ok=True)
+
+        # Preload DB embeddings once per run (instead of O(N) per photo).
+        db_embeds: Optional[np.ndarray] = None
+        if user_id and remove_duplicates:
+            try:
+                from app.db.mongodb import photos_collection
+                docs = photos_collection.find(
+                    {"user_id": user_id, "image_embedding": {"$exists": True}},
+                    {"_id": 0, "image_embedding": 1},
+                )
+                arr: list[np.ndarray] = []
+                for d in docs:
+                    v = d.get("image_embedding")
+                    if v is None:
+                        continue
+                    arr.append(np.array(v, dtype=np.float64))
+                if arr:
+                    db_embeds = np.stack(arr, axis=0)
+            except Exception:
+                db_embeds = None
 
         for i, path in enumerate(paths, start=1):
-            # Exact duplicate detection using MD5 hash
-            file_md5 = md5_file(path)
-            if file_md5 in self.duplicate_hashes:
-                os.remove(path)
-                removed_dups += 1
-                if progress:
-                    progress({
-                        "status": "duplicate",
-                        "current": i,
-                        "total": total,
-                        "photo": path,
-                        "message": "Exact duplicate (MD5)"
-                    })
-                continue
-            self.duplicate_hashes.add(file_md5)
+            file_md5: Optional[str] = None
+            if remove_duplicates:
+                # Exact duplicate detection using MD5 hash
+                file_md5 = md5_file(path)
+                if file_md5 in self.duplicate_hashes:
+                    os.remove(path)
+                    removed_dups += 1
+                    if progress:
+                        progress({
+                            "status": "duplicate",
+                            "current": i,
+                            "total": total,
+                            "photo": path,
+                            "message": "Exact duplicate (MD5)"
+                        })
+                    continue
+                self.duplicate_hashes.add(file_md5)
 
             # Load image
             img = read_image(path)
@@ -518,43 +593,82 @@ class FaceSorter:
                 continue
 
             # Ram visual dedup
-            is_dup = False
-            for known_emb in self.image_embeddings:
-                if np.linalg.norm(known_emb - emb) < 0.15:
-                    os.remove(path)
-                    removed_dups += 1
-                    is_dup = True
-                    if progress:
-                        progress({
-                            "status": "duplicate",
-                            "current": i,
-                            "total": total,
-                            "photo": path,
-                            "message": "Visual duplicate (RAM)"
-                        })
-                    break
+            if remove_duplicates:
+                is_dup = False
+                if self.image_embeddings:
+                    try:
+                        mat = np.stack(self.image_embeddings, axis=0)
+                        if float(np.min(np.linalg.norm(mat - emb, axis=1))) < 0.15:
+                            os.remove(path)
+                            removed_dups += 1
+                            is_dup = True
+                            if progress:
+                                progress({
+                                    "status": "duplicate",
+                                    "current": i,
+                                    "total": total,
+                                    "photo": path,
+                                    "message": "Visual duplicate (RAM)"
+                                })
+                    except Exception:
+                        # fallback to slower loop
+                        for known_emb in self.image_embeddings:
+                            if np.linalg.norm(known_emb - emb) < 0.15:
+                                os.remove(path)
+                                removed_dups += 1
+                                is_dup = True
+                                if progress:
+                                    progress({
+                                        "status": "duplicate",
+                                        "current": i,
+                                        "total": total,
+                                        "photo": path,
+                                        "message": "Visual duplicate (RAM)"
+                                    })
+                                break
+                if is_dup:
+                    continue
 
-            if is_dup:
-                continue
+                # DB visual dedup (cross-run)
+                if db_embeds is not None:
+                    try:
+                        if float(np.min(np.linalg.norm(db_embeds - emb, axis=1))) < 0.15:
+                            os.remove(path)
+                            removed_dups += 1
+                            if progress:
+                                progress({
+                                    "status": "duplicate",
+                                    "current": i,
+                                    "total": total,
+                                    "photo": path,
+                                    "message": "Visual duplicate (DB)"
+                                })
+                            continue
+                    except Exception:
+                        pass
 
-            # DB visual dedup (cross-run)
-            if user_id and self._is_visual_duplicate(user_id, emb):
-                os.remove(path)
-                removed_dups += 1
+                self.image_embeddings.append(emb)
+
+            if not sort_photos:
                 if progress:
                     progress({
-                        "status": "duplicate",
+                        "status": "scanned",
                         "current": i,
                         "total": total,
                         "photo": path,
-                        "message": "Visual duplicate (DB)"
+                        "message": "Scanned"
                     })
                 continue
 
-            self.image_embeddings.append(emb)
-
-            # Match person
-            match = self._match_person(emb)
+            # Match person + confidence
+            match_details = self._match_person_details(emb, threshold=match_threshold)
+            match = match_details["name"]
+            conf = match_details.get("confidence", 0.0)
+            if match:
+                try:
+                    match_confidences.append(float(conf))
+                except Exception:
+                    pass
 
             dest_dir = os.path.join(output_base, match) if match else unknown_folder
             os.makedirs(dest_dir, exist_ok=True)
@@ -562,7 +676,7 @@ class FaceSorter:
             dest_path = os.path.join(dest_dir, os.path.basename(path))
             os.replace(path, dest_path)
 
-            # DB persistance
+            # DB persistence (optional)
             if user_id:
                 from app.db.mongodb import photos_collection
                 photos_collection.insert_one({
@@ -570,7 +684,9 @@ class FaceSorter:
                     "path": dest_path,
                     "md5": file_md5,
                     "image_embedding": emb.tolist(),
-                    "person": match
+                    "person": match,
+                    "match_distance": match_details.get("distance"),
+                    "match_confidence": conf,
                 })
 
             if match:
@@ -585,6 +701,9 @@ class FaceSorter:
                     "total": total,
                     "photo": path,
                     "destination": dest_dir,
+                    "person": match,
+                    "match_distance": match_details.get("distance"),
+                    "match_confidence": conf,
                     "message": f"Sorted to {match or 'unknown'}"
                 })
 
@@ -594,4 +713,5 @@ class FaceSorter:
             "unknown": moved_unknown,
             "skipped": skipped,
             "duplicates_removed": removed_dups,
+            "avg_match_confidence": round(float(np.mean(match_confidences)), 1) if match_confidences else 0.0,
         }

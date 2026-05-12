@@ -24,10 +24,18 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
   bool loading = true;
   String? error;
 
+  final ScrollController _scrollCtrl = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -115,8 +123,10 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               const SizedBox(height: 8),
               Expanded(
                 child: Scrollbar(
+                  controller: _scrollCtrl,
                   thumbVisibility: true,
                   child: ListView(
+                    controller: _scrollCtrl,
                     padding: const EdgeInsets.only(bottom: 16),
                     children: [
                       const Align(

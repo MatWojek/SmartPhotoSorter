@@ -29,6 +29,8 @@ class ApiService {
     return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
   }
 
+  static String get baseUrl => _base;
+
   static Uri _uri(String path) => Uri.parse('$_base$path');
 
   /// Set or clear the JWT token used for authenticated calls.
@@ -143,6 +145,9 @@ class ApiService {
     required String unsortedFolder,
     required String outputBase,
     required String unknownFolder,
+    bool removeDuplicates = true,
+    bool sortPhotos = true,
+    double matchThreshold = 0.35,
   }) async {
     final res = await http.post(
       _uri('/ml/sort-local'),
@@ -152,6 +157,9 @@ class ApiService {
         'unsorted_folder': unsortedFolder,
         'output_base': outputBase,
         'unknown_folder': unknownFolder,
+        'remove_duplicates': removeDuplicates,
+        'sort_photos': sortPhotos,
+        'match_threshold': matchThreshold,
       }),
     );
     _throwIfError(res, 'Sort-local failed');

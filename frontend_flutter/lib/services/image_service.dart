@@ -10,12 +10,18 @@ class ImageService {
     required String unsortedFolder,
     required String outputBase,
     required String unknownFolder,
+    bool removeDuplicates = true,
+    bool sortPhotos = true,
+    double matchThreshold = 0.35,
   }) {
     return ApiService.startSortLocal(
       trainingFolders: trainingFolders,
       unsortedFolder: unsortedFolder,
       outputBase: outputBase,
       unknownFolder: unknownFolder,
+      removeDuplicates: removeDuplicates,
+      sortPhotos: sortPhotos,
+      matchThreshold: matchThreshold,
     );
   }
 

@@ -5,10 +5,29 @@ import 'package:web_socket_channel/io.dart';
 import 'package:http/http.dart' as http;
 
 class ProgressOverlay extends StatefulWidget {
-  final String wsUrl;
-  final Uri sseUri;
+  final String? wsUrl;
+  final Uri? sseUri;
+  final Stream<Map<String, dynamic>>? eventStream;
 
-  const ProgressOverlay({super.key, required this.wsUrl, required this.sseUri});
+  const ProgressOverlay._({
+    super.key,
+    this.wsUrl,
+    this.sseUri,
+    this.eventStream,
+  });
+
+  factory ProgressOverlay({
+    Key? key,
+    required String wsUrl,
+    required Uri sseUri,
+  }) =>
+      ProgressOverlay._(key: key, wsUrl: wsUrl, sseUri: sseUri);
+
+  factory ProgressOverlay.stream({
+    Key? key,
+    required Stream<Map<String, dynamic>> events,
+  }) =>
+      ProgressOverlay._(key: key, eventStream: events);
 
   @override
   State<ProgressOverlay> createState() => _ProgressOverlayState();
@@ -18,17 +37,43 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
   IOWebSocketChannel? _channel;
   http.Client? _httpClient;
   StreamSubscription<String>? _sseSub;
+  StreamSubscription<Map<String, dynamic>>? _streamSub;
 
   Map<String, dynamic>? _lastEvent;
   bool _done = false;
   bool _connecting = true;
   bool _connectionError = false;
   String? _errorMessage;
+  bool _autoClosed = false;
 
   @override
   void initState() {
     super.initState();
-    _startWsOrSse(widget.wsUrl, widget.sseUri);
+    if (widget.eventStream != null) {
+      setState(() {
+        _connecting = false;
+        _connectionError = false;
+        _errorMessage = null;
+      });
+      _streamSub = widget.eventStream!.listen((ev) {
+        setState(() {
+          _lastEvent = ev;
+          _done = (ev['status'] == 'done') || (ev['status'] == 'cancelled');
+          if (ev['status'] == 'error') {
+            _errorMessage = (ev['message'] as String?) ?? 'Error';
+          }
+        });
+        _maybeAutoClose(ev);
+      }, onError: (_) {
+        if (!mounted) return;
+        setState(() {
+          _connectionError = true;
+          _errorMessage = 'Lost connection to progress stream.';
+        });
+      });
+    } else {
+      _startWsOrSse(widget.wsUrl!, widget.sseUri!);
+    }
   }
 
   void _startWsOrSse(String wsUrl, Uri sseUri) {
@@ -96,6 +141,30 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
       _connectionError = false;
       _errorMessage = null;
     });
+    _maybeAutoClose(ev);
+  }
+
+  void _maybeAutoClose(Map<String, dynamic> ev) {
+    if (_autoClosed || !mounted) return;
+    final status = (ev['status'] as String?) ?? '';
+    if (status == 'error' || status == 'cancelled') return;
+
+    final current = (ev['current'] is int)
+        ? (ev['current'] as int)
+        : int.tryParse('${ev['current']}') ?? 0;
+    final total = (ev['total'] is int) ? (ev['total'] as int) : int.tryParse('${ev['total']}') ?? 0;
+    final reached100 = total > 0 && current >= total;
+    final done = status == 'done';
+    if (!reached100 && !done) return;
+
+    _autoClosed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        Navigator.of(context).maybePop();
+      });
+    });
   }
 
   @override
@@ -103,11 +172,15 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
     _channel?.sink.close();
     _sseSub?.cancel();
     _httpClient?.close();
+    _streamSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final effectiveWidth = (screen.width * 0.92) > 520 ? 520.0 : (screen.width * 0.92);
+
     final ev = _lastEvent;
     final int current = (ev?['current'] ?? 0) as int;
     final int total = (ev?['total'] ?? 0) as int;
@@ -118,13 +191,18 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
     final photo = ev?['photo'] as String? ?? '';
     final dest = ev?['destination'] as String?;
     final status = ev?['status'] as String? ?? '';
+    final person = ev?['person'] as String?;
+    final confidence = ev?['match_confidence'];
+    final summary = ev?['summary'] as Map<String, dynamic>?;
+    final avgConf = summary?['avg_match_confidence'];
+    final percent = (value != null) ? (value * 100).clamp(0, 100).toStringAsFixed(0) : null;
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: SizedBox(
-          width: 520,
+          width: effectiveWidth,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -133,7 +211,9 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 10),
-              LinearProgressIndicator(value: (_connectionError || _connecting) ? null : value),
+              LinearProgressIndicator(
+                value: (_connectionError || _connecting) ? null : value,
+              ),
               const SizedBox(height: 10),
               Align(
                 alignment: Alignment.centerLeft,
@@ -160,13 +240,32 @@ class _ProgressOverlayState extends State<ProgressOverlay> {
                   ),
                 ),
               const SizedBox(height: 8),
-              Row(
-                children: [
-                  Chip(label: Text('Status: $status')),
-                  const SizedBox(width: 8),
-                  if (total > 0) Chip(label: Text('$current / $total')),
-                ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    Chip(label: Text('Status: $status')),
+                    if (total > 0) Chip(label: Text('$current / $total')),
+                    if (percent != null && total > 0) Chip(label: Text('$percent%')),
+                    if (person != null && person.isNotEmpty)
+                      Chip(label: Text('Person: $person')),
+                    if (confidence != null)
+                      Chip(label: Text('Match: ${confidence.toString()}%')),
+                  ],
+                ),
               ),
+              if (_done && avgConf != null) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Average match confidence: ${avgConf.toString()}%',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,

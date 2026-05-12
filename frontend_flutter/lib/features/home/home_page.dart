@@ -310,9 +310,6 @@ class _HomePageState extends State<HomePage> {
                   onClearSelected: () => setState(() => selectedFolder = null),
                   onFolderSelected: (path) {
                     setState(() => selectedFolder = path);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Start: $path')));
                   },
                 ),
               ),
